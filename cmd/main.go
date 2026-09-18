@@ -56,4 +56,24 @@ func main() {
 		return
 	}
 	fmt.Printf("You selected: %s\n", selected)
+
+	v, err := tui.Dropdown("Samples", []Sample{
+		{Name: "Alice", Age: 20},
+		{Name: "Bob", Age: 30},
+		{Name: "Charlie", Age: 40},
+	}, tui.WithTimeout(10*time.Second),
+		tui.WithActiveItemTemplate(`-> {{.Name}} {{ dim "(age: " .Age ")" }}`),
+		tui.WithInactiveItemTemplate(`.. {{.Name}}`),
+		tui.WithHide(),
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("Hello, %s!\n", v.Name)
+}
+
+type Sample struct {
+	Name string
+	Age  int
 }

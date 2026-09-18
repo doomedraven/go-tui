@@ -9,16 +9,27 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"text/template"
 )
 
-type dropdown[T any] struct {
-	Ctx     context.Context
-	Label   string
-	Items   []T
-	Default T
-	Hide    bool
+type dropdown struct {
+	Ctx       context.Context
+	Label     string
+	Items     []any
+	Default   any
+	Hide      bool
+	OneReturn bool
 
-	ItemsFn func(prefix string) []T
+	LabelTemplate        string
+	labelTemplate        *template.Template
+	ActiveItemTemplate   string
+	activeItemTemplate   *template.Template
+	InactiveItemTemplate string
+	inactiveItemTemplate *template.Template
+	AnswerTemplate       string
+	answerTemplate       *template.Template
+
+	ItemsFn func(prefix string) []any
 	In      io.Reader
 	Out     io.Writer
 
@@ -39,7 +50,12 @@ func Confirm(action string, opts ...opt) bool {
 
 func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	var zero T
-	i, err := DropdownIndex(label, items, opts...)
+	// apparently, there's no other non-reflective way around
+	anyItems := make([]any, len(items))
+	for i, v := range items {
+		anyItems[i] = v
+	}
+	i, err := DropdownIndex(label, anyItems, opts...)
 	if err != nil {
 		return zero, err
 	}
@@ -47,8 +63,8 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	return items[i], nil
 }
 
-func DropdownIndex[T any](label string, items []T, o ...opt) (int, error) {
-	d, err := newDropdown[T]()
+func DropdownIndex(label string, items []any, o ...opt) (int, error) {
+	d, err := newDropdown()
 	if err != nil {
 		return -1, err
 	}
@@ -56,31 +72,134 @@ func DropdownIndex[T any](label string, items []T, o ...opt) (int, error) {
 	d.Items = items
 	err = opts(o).Apply(d)
 	if err != nil {
-		return 0, err
+		return -1, err
+	}
+	if d.OneReturn && len(d.Items) == 1 {
+		return 0, nil
+	}
+	err = d.parseTemplates()
+	if err != nil {
+		return -1, fmt.Errorf("templates: %w", err)
 	}
 	i, err := d.run()
 	if err != nil {
 		return -1, err
 	}
 	if !d.Hide {
-		fmt.Fprintf(d.io, "%s: %s\n", d.Label, fmt.Sprint(items[i]))
+		err = d.answerTemplate.Execute(d.io, dropdownAnswer{
+			Label:  label,
+			Answer: items[i],
+		})
+		if err != nil {
+			return i, fmt.Errorf("answer: %w", err)
+		}
+		d.io.Write([]byte{'\n'})
 	}
 	return i, nil
 }
 
-func newDropdown[T any]() (*dropdown[T], error) {
-	d := &dropdown[T]{
+var DefaultDropdownLabelTemplate = `{{ "?" | green }} {{ . | bold }} `
+var DefaultDropdownActiveItemTemplate = `{{ "→" | cyan }} {{ . | cyan }}`
+var DefaultDropdownInactiveItemTemplate = `{{ "→" | dim }} {{ . | dim }}`
+var DefaultDropdownAnswerTemplate = `{{ "✔" | dim }} {{ .Label | dim }} {{ "…" | dim }} {{ .Answer | bold }}`
+
+type dropdownAnswer struct {
+	Label  string
+	Answer any
+}
+
+func dropdownOpt(o func(d *dropdown) error) opt {
+	return func(a any) error {
+		// check if a is any dropdown
+		d, ok := a.(*dropdown)
+		if !ok {
+			return fmt.Errorf("need a dropdown, got %v", a)
+		}
+		return o(d)
+	}
+}
+
+func WithOneReturn() opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.OneReturn = true
+		return nil
+	})
+}
+
+func WithHide() opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.Hide = true
+		return nil
+	})
+}
+
+func WithLabelTemplate(tmpl string) opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.LabelTemplate = tmpl
+		return nil
+	})
+}
+
+func WithActiveItemTemplate(tmpl string) opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.ActiveItemTemplate = tmpl
+		return nil
+	})
+}
+
+func WithInactiveItemTemplate(tmpl string) opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.InactiveItemTemplate = tmpl
+		return nil
+	})
+}
+
+func WithAnswerTemplate(tmpl string) opt {
+	return dropdownOpt(func(d *dropdown) error {
+		d.AnswerTemplate = tmpl
+		return nil
+	})
+}
+
+func newDropdown() (*dropdown, error) {
+	d := &dropdown{
 		Ctx:         context.Background(),
 		Label:       "Select from list",
 		makeRawTerm: makeRawTerm,
 		io: &termIO{
 			ReadWriter: defaultIO,
 		},
+		LabelTemplate:        DefaultDropdownLabelTemplate,
+		ActiveItemTemplate:   DefaultDropdownActiveItemTemplate,
+		InactiveItemTemplate: DefaultDropdownInactiveItemTemplate,
+		AnswerTemplate:       DefaultDropdownAnswerTemplate,
 	}
 	return d, nil
 }
 
-func (d *dropdown[T]) getTIO() *tio {
+func (d *dropdown) parseTemplates() error {
+	var err error
+	tmpl := template.New("dropdown").Funcs(colorFns)
+	d.labelTemplate, err = tmpl.New("label").Parse(d.LabelTemplate)
+	if err != nil {
+		return fmt.Errorf("label: %w", err)
+	}
+	d.activeItemTemplate, err = tmpl.New("active").Parse(d.ActiveItemTemplate)
+	if err != nil {
+		return fmt.Errorf("active item: %w", err)
+	}
+	d.inactiveItemTemplate, err = tmpl.New("inactive").Parse(d.InactiveItemTemplate)
+	if err != nil {
+		return fmt.Errorf("inactive item: %w", err)
+	}
+	d.answerTemplate, err = tmpl.New("answer").Parse(d.AnswerTemplate)
+	if err != nil {
+		return fmt.Errorf("answer: %w", err)
+	}
+	return nil
+}
+
+func (d *dropdown) getTIO() *tio {
 	io, ok := d.io.ReadWriter.(*tio)
 	if !ok {
 		return nil
@@ -89,7 +208,7 @@ func (d *dropdown[T]) getTIO() *tio {
 }
 
 // implements [withWriter]
-func (d *dropdown[T]) setWriter(w io.Writer) {
+func (d *dropdown) setWriter(w io.Writer) {
 	tui, ok := w.(*Tui)
 	if ok {
 		d.isView = true
@@ -106,24 +225,31 @@ func (d *dropdown[T]) setWriter(w io.Writer) {
 }
 
 // implements [withContext]
-func (d *dropdown[T]) setContext(ctx context.Context) {
+func (d *dropdown) setContext(ctx context.Context) {
 	d.Ctx = ctx
 }
 
 // implements [withContext]
-func (d *dropdown[T]) getContext() context.Context {
+func (d *dropdown) getContext() context.Context {
 	return d.Ctx
 }
 
 // render displays the dropdown
-func (d *dropdown[T]) render() {
+func (d *dropdown) render() error {
 	// use buffer to write to io only once
 	var buf bytes.Buffer
 	var prefix int
+	var err error
 	for i, item := range d.Items {
 		fmt.Fprint(&buf, "\r") // ensure we start from the leftmost position
 		if i == 0 {
-			prefix, _ = fmt.Fprintf(&buf, "%s ", d.Label)
+			var labelBuf bytes.Buffer
+			err = d.labelTemplate.Execute(&labelBuf, d.Label)
+			if err != nil {
+				return fmt.Errorf("label: %w", err)
+			}
+			prefix = width(labelBuf.Bytes())
+			labelBuf.WriteTo(&buf)
 		} else {
 			for range prefix {
 				fmt.Fprintf(&buf, " ")
@@ -131,24 +257,36 @@ func (d *dropdown[T]) render() {
 		}
 		// TODO: print spaces till the end of the terminal width except for the last line
 		if i == d.selected {
-			fmt.Fprintf(&buf, "\x1b[36m> %s\x1b[0m\n", fmt.Sprint(item)) // cyan color for selected item
+			err = d.activeItemTemplate.Execute(&buf, item)
+			if err != nil {
+				return fmt.Errorf("active: %w", err)
+			}
+			buf.WriteByte('\n')
 		} else {
-			fmt.Fprintf(&buf, "  %s\n", fmt.Sprint(item))
+			err = d.inactiveItemTemplate.Execute(&buf, item)
+			if err != nil {
+				return fmt.Errorf("inactive: %w", err)
+			}
+			buf.WriteByte('\n')
 		}
 	}
 	fmt.Fprint(&buf, "\r")
-	buf.WriteTo(d.io)
+	_, err = buf.WriteTo(d.io)
+	return err
 }
 
 // Show displays the dropdown and handles user input
-func (d *dropdown[T]) run() (int, error) {
+func (d *dropdown) run() (int, error) {
 	restore, err := d.makeRawTerm()
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("raw term: %w", err)
 	}
 	defer restore()
-	d.render()
 	for {
+		err = d.render()
+		if err != nil {
+			return -1, fmt.Errorf("render: %w", err)
+		}
 		space := len(d.Items)
 		select {
 		case <-d.Ctx.Done():
@@ -168,13 +306,11 @@ func (d *dropdown[T]) run() (int, error) {
 				if d.selected > 0 {
 					d.selected--
 					d.io.clear(space)
-					d.render()
 				}
 			case '↓':
 				if d.selected < len(d.Items)-1 {
 					d.selected++
 					d.io.clear(space)
-					d.render()
 				}
 			}
 		}

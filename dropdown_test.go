@@ -5,7 +5,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/nfx/go-tui/internal/assert"
@@ -53,11 +52,7 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 		result <- Confirm("Are you sure?",
 			WithInput(cio),
 			WithOutput(cio),
-			func(a any) error {
-				d, ok := a.(*dropdown[string])
-				if !ok {
-					return fmt.Errorf("not a dropdown")
-				}
+			dropdownOpt(func(d *dropdown) error {
 				// noop the raw term call
 				d.makeRawTerm = func() (func() error, error) {
 					return func() error {
@@ -65,7 +60,12 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 					}, nil
 				}
 				return nil
-			})
+			}),
+			WithLabelTemplate("{{ . }} "),
+			WithActiveItemTemplate("+ {{ . }}"),
+			WithInactiveItemTemplate("- {{ . }}"),
+			WithAnswerTemplate("{{ .Label }}: {{ .Answer }}"),
+		)
 	}()
 	return ins, outs, result
 }
@@ -73,34 +73,38 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 func TestSimpleCase(t *testing.T) {
 	in, out, res := confirmForTest(t)
 	assert.Equal(t,
-		"\rAre you sure? \x1b[36m> Yes\x1b[0m\n\r                No\n\r",
+		"\rAre you sure? + Yes\n\r              - No\n\r",
 		<-out)
 	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
-	assert.Equal(t, "Are you sure?: Yes\n", <-out)
+	assert.Equal(t, "Are you sure?", <-out)
+	assert.Equal(t, ": ", <-out)
+	assert.Equal(t, "Yes", <-out)
 	assert.Equal(t, true, <-res)
 }
 
 func TestDenyCase(t *testing.T) {
 	in, out, res := confirmForTest(t)
 	assert.Equal(t,
-		"\rAre you sure? \x1b[36m> Yes\x1b[0m\n\r                No\n\r",
+		"\rAre you sure? + Yes\n\r              - No\n\r",
 		<-out)
 	in <- "\x1b\x5b\x42" // down
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
 	assert.Equal(t,
-		"\rAre you sure?   Yes\n\r              \x1b[36m> No\x1b[0m\n\r",
+		"\rAre you sure? - Yes\n\r              + No\n\r",
 		<-out)
 	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
-	assert.Equal(t, "Are you sure?: No\n", <-out)
+	assert.Equal(t, "Are you sure?", <-out)
+	assert.Equal(t, ": ", <-out)
+	assert.Equal(t, "No", <-out)
 	assert.Equal(t, false, <-res)
 }
 
 func TestDownAndUpCase(t *testing.T) {
 	in, out, res := confirmForTest(t)
 	assert.Equal(t,
-		"\rAre you sure? \x1b[36m> Yes\x1b[0m\n\r                No\n\r",
+		"\rAre you sure? + Yes\n\r              - No\n\r",
 		<-out)
 	in <- "\x1b\x5b\x42" // down
 	<-out                // clear
@@ -110,6 +114,8 @@ func TestDownAndUpCase(t *testing.T) {
 	<-out                // render
 	in <- "\x0d"         // enter
 	<-out                // clear
-	assert.Equal(t, "Are you sure?: Yes\n", <-out)
+	assert.Equal(t, "Are you sure?", <-out)
+	assert.Equal(t, ": ", <-out)
+	assert.Equal(t, "Yes", <-out)
 	assert.Equal(t, true, <-res)
 }
