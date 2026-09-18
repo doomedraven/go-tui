@@ -5,24 +5,26 @@ package tui
 
 import "context"
 
-func NewTUI(ctx context.Context, opts ...opt) *Tui {
-	return &Tui{
-		opts: opts,
-		ctx:  ctx,
-		termIO: termIO{
-			ReadWriter: NewIO(ctx), // TODO: handle errors and stuff
-		},
+func NewTUI(ctx context.Context, opts ...opt) (*Tui, error) {
+	tio, err := makeTermIO(defaultIO.Reader, defaultIO.Writer)
+	if err != nil {
+		return nil, err
 	}
+	return &Tui{
+		opts:   opts,
+		ctx:    ctx,
+		termIO: tio,
+	}, nil
 }
 
 type Tui struct {
 	opts
-	termIO // exposes io.ReadWriter
-	ctx    context.Context
+	*termIO // exposes io.ReadWriter
+	ctx     context.Context
 }
 
 func (t *Tui) prependView() *view {
-	cio, ok := t.termIO.ReadWriter.(*chanIO)
+	cio, ok := t.termIO.Writer.(*chanIO)
 	if !ok {
 		panic("cannot get view")
 	}
@@ -32,7 +34,7 @@ func (t *Tui) prependView() *view {
 }
 
 func (t *Tui) view() *view {
-	cio, ok := t.termIO.ReadWriter.(*chanIO)
+	cio, ok := t.termIO.Writer.(*chanIO)
 	if ok {
 		return cio.head
 	}

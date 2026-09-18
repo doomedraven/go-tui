@@ -57,8 +57,6 @@ type chanIO struct {
 }
 
 func (i *chanIO) forwardTo(w io.Writer) {
-	revert, _ := makeRawTerm()
-	defer revert()
 	for {
 		select {
 		case <-i.ctx.Done():

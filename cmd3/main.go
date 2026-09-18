@@ -15,7 +15,7 @@ import (
 func main() {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, 300*time.Second)
-	w := tui.NewTUI(ctx)
+	w, _ := tui.NewTUI(ctx)
 
 	// set global logger with custom options
 	slog.SetDefault(slog.New(

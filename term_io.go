@@ -12,8 +12,45 @@ import (
 	"golang.org/x/term"
 )
 
+type descriptor interface {
+	Fd() uintptr
+}
+
 type termIO struct {
-	io.ReadWriter
+	io.Reader
+	io.Writer
+	Width, Height int
+	Restore       func() error
+}
+
+var ErrNoTTY = fmt.Errorf("no tty")
+
+func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
+	stderr, ok := out.(descriptor)
+	if !ok {
+		return nil, fmt.Errorf("stderr: %w", ErrNoTTY)
+	}
+	stdin, ok := in.(descriptor)
+	if !ok {
+		return nil, fmt.Errorf("stdin: %w", ErrNoTTY)
+	}
+	width, height, err := term.GetSize(int(stderr.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("size: %w", err)
+	}
+	oldState, err := term.MakeRaw(int(stdin.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("raw: %w", err)
+	}
+	return &termIO{
+		Reader: in,
+		Writer: out,
+		Width:  width,
+		Height: height,
+		Restore: func() error {
+			return term.Restore(int(stdin.Fd()), oldState)
+		},
+	}, nil
 }
 
 func (t *termIO) clear(space int) error {
@@ -78,15 +115,4 @@ func isTerminal() bool {
 func isPrintable(r rune) bool {
 	isSurrogate := r >= 0xd800 && r <= 0xdbff
 	return r >= 32 && !isSurrogate
-}
-
-func makeRawTerm() (func() error, error) {
-	// Switch to raw mode
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return nil, fmt.Errorf("raw term: %w", err)
-	}
-	return func() error {
-		return term.Restore(int(os.Stdin.Fd()), oldState)
-	}, nil
 }

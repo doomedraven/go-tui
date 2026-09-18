@@ -25,36 +25,29 @@ func (o opts) Apply(d any) error {
 	return nil
 }
 
-type getTIO interface {
-	getTIO() *tio
+type withIO interface {
+	setWriter(io.Writer)
+	setReader(io.Reader)
 }
 
 func WithInput(r io.Reader) opt {
 	return func(d any) error {
-		x, ok := d.(getTIO)
+		io, ok := d.(withIO)
 		if !ok {
 			return fmt.Errorf("cannot set IO")
 		}
-		tio := x.getTIO()
-		if tio == nil {
-			return fmt.Errorf("cannot set IO")
-		}
-		tio.Reader = r
+		io.setReader(r)
 		return nil
 	}
 }
 
-type withWriter interface {
-	setWriter(io.Writer)
-}
-
 func WithOutput(w io.Writer) opt {
 	return func(d any) error {
-		x, ok := d.(withWriter)
+		io, ok := d.(withIO)
 		if !ok {
 			return fmt.Errorf("cannot set IO")
 		}
-		x.setWriter(w)
+		io.setWriter(w)
 		return nil
 	}
 }

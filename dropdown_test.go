@@ -5,6 +5,7 @@ package tui
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/nfx/go-tui/internal/assert"
@@ -53,15 +54,19 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 			WithInput(cio),
 			WithOutput(cio),
 			dropdownOpt(func(d *dropdown) error {
-				// noop the raw term call
-				d.makeRawTerm = func() (func() error, error) {
-					return func() error {
-						return nil
+				// TODO: improve the UX for testing
+				d.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
+					return &termIO{
+						Reader:  in,
+						Writer:  out,
+						Width:   120,
+						Height:  80,
+						Restore: func() error { return nil },
 					}, nil
 				}
 				return nil
 			}),
-			WithLabelTemplate("{{ . }} "),
+			WithLabelTemplate("{{ . }}"),
 			WithActiveItemTemplate("+ {{ . }}"),
 			WithInactiveItemTemplate("- {{ . }}"),
 			WithAnswerTemplate("{{ .Label }}: {{ .Answer }}"),
