@@ -131,7 +131,7 @@ func (d *dropdown[T]) render() {
 		}
 		// TODO: print spaces till the end of the terminal width except for the last line
 		if i == d.selected {
-			fmt.Fprintf(&buf, "\033[36m> %s\033[0m\n", fmt.Sprint(item)) // cyan color for selected item
+			fmt.Fprintf(&buf, "\x1b[36m> %s\x1b[0m\n", fmt.Sprint(item)) // cyan color for selected item
 		} else {
 			fmt.Fprintf(&buf, "  %s\n", fmt.Sprint(item))
 		}

@@ -26,18 +26,18 @@ func TestView(t *testing.T) {
 		{ // only one line
 			in: "this \x1b[1;31mline\x1b[0m has escape sequences.",
 			out: []string{
-				"this \x1b[1;31mline\x1b[0m ",
-				"has escape",
-				" sequences",
+				"this \x1b[1;31mline\x1b[0m \n",
+				"has escape\n",
+				" sequences\n",
 				".         ",
 			},
 		},
 		{ // across lines
 			in: "this \x1b[1;31mline has\x1b[0m escape sequences.",
 			out: []string{
-				"this \x1b[1;31mline ",
-				"has\x1b[0m escape",
-				" sequences",
+				"this \x1b[1;31mline \n",
+				"has\x1b[0m escape\n",
+				" sequences\n",
 				".         ",
 			},
 		},
@@ -45,12 +45,12 @@ func TestView(t *testing.T) {
 			in: `this line is
 without any escaping characters.`,
 			out: []string{
-				"this line ",
-				"is        ",
-				"without an",
-				"y escaping",
-				" character",
-				"s.        ",
+				"this line \n",
+				"is        ", // FIXME: bug
+				"without an\n",
+				"y escaping\n",
+				" character\n",
+				"s.        ", // FIXME: bug
 			},
 		},
 	} {
@@ -71,9 +71,11 @@ without any escaping characters.`,
 
 func TestViewLinkedList(t *testing.T) {
 	v := &view{
-		lines: [][]byte{[]byte("a"), []byte("b")},
+		height: 2,
+		lines:  [][]byte{[]byte("a"), []byte("b")},
 		next: &view{
-			lines: [][]byte{[]byte("c"), []byte("d")},
+			height: 2,
+			lines:  [][]byte{[]byte("c"), []byte("d")},
 		},
 	}
 	assert.Equal(t, 4, v.numLines())

@@ -39,12 +39,12 @@ func (t *termIO) clear(space int) error {
 
 const (
 	keyCtrlC = 3
-	keyEnter = 13
+	keyEnter = 0x0d
 )
 
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
-	n, err := os.Stdin.Read(buf) // todo: fixme
+	n, err := t.Read(buf) // todo: fixme
 	if err == io.EOF {
 		// Return EOT (Ctrl+D) character
 		return 4, io.EOF

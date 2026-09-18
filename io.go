@@ -98,7 +98,7 @@ func (i *chanIO) Read(p []byte) (n int, err error) {
 		if !ok {
 			return 0, io.EOF
 		}
-		p = res
+		copy(p, res)
 		return len(res), nil
 	}
 }
