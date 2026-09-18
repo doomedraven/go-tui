@@ -16,7 +16,7 @@ func main() {
 	rand.Shuffle(len(words), func(i, j int) {
 		words[i], words[j] = words[j], words[i]
 	})
-	v, err := tui.Dropdown("Select a word", words, tui.WithTimeout(30*time.Second))
+	v, err := tui.Dropdown("Select a word", words, tui.WithTimeout(30*time.Second), tui.WithOneReturn())
 	if err != nil {
 		log.Fatal(err)
 		return

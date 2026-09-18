@@ -92,10 +92,11 @@ func DropdownIndex(label string, items []any, o ...opt) (int, error) {
 	if err != nil {
 		return -1, fmt.Errorf("templates: %w", err)
 	}
-	i, err := d.run()
+	j, err := d.run()
 	if err != nil {
 		return -1, err
 	}
+	i := d.relevant[j]
 	if !d.Hide {
 		var buf bytes.Buffer
 		err = d.answerTemplate.Execute(&buf, dropdownAnswer{
@@ -262,6 +263,10 @@ func (d *dropdown) getContext() context.Context {
 
 type bbuf []byte
 
+func (b *bbuf) String() string {
+	return string(*b)
+}
+
 func (b *bbuf) Write(p []byte) (n int, err error) {
 	*b = append(*b, p...)
 	return len(p), nil
@@ -272,8 +277,7 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
 	var prefix int
 	var err error
-	total := len(d.Items)
-	height := min(total, io.Height/2)
+
 	var longest int
 	if len(d.displayed) == 0 {
 		d.trie = newTrie()
@@ -285,14 +289,16 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 			if err != nil {
 				return fmt.Errorf("inactive: %w", err)
 			}
-			d.trie.Add(d.inactive[i], i)
+			d.trie.Add(d.inactive[i].String(), i)
 			d.widths[i] = width(d.inactive[i])
 			d.relevant[i] = i
 			longest = max(longest, d.widths[i])
 		}
-		d.displayed = d.relevant[:height]
+		d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
 	}
 	var bufMore bbuf
+	total := len(d.relevant)
+	height := min(total, io.Height/2)
 	if total > len(d.displayed) {
 		err = d.moreItemsTemplate.Execute(&bufMore, dropdownMore{
 			More:  total - d.offset - height,
@@ -372,7 +378,7 @@ type dropdownMore struct {
 
 func (d *dropdown) height(io *termIO) int {
 	// TODO: once viewport is more stable, use it here
-	height, total := len(d.displayed), len(d.Items)
+	height, total := len(d.displayed), len(d.relevant)
 	if total > height {
 		height++ // more ... row
 	}
@@ -395,6 +401,7 @@ func (d *dropdown) run() (int, error) {
 	}
 	frame := bytes.NewBuffer(make([]byte, d.height(io)*io.Width))
 	frame.Reset()
+	var typed []rune
 	for {
 		err = d.render(io, frame)
 		if err != nil {
@@ -430,11 +437,32 @@ func (d *dropdown) run() (int, error) {
 					d.selected--
 				}
 			case '↓':
-				if d.offset+displayed < len(d.Items) { // page down
+				if d.offset+displayed < len(d.relevant) { // page down
 					d.offset++
 					d.displayed = d.relevant[d.offset : d.offset+displayed]
 				} else if d.selected < displayed-1 {
 					d.selected++
+				}
+			case 0x7f: // backspace
+				if len(typed) > 0 {
+					typed = typed[:len(typed)-1]
+					d.relevant = d.trie.Prefix(string(typed))
+					d.displayed = d.relevant[:min(len(d.relevant), space)]
+					d.selected = 0
+					d.offset = 0
+				}
+			default:
+				typed = append(typed, key)
+				d.relevant = d.trie.Prefix(string(typed))
+				if d.OneReturn && len(d.relevant) == 1 {
+					return 0, nil
+				}
+				if len(d.relevant) == 0 {
+					typed = typed[:len(typed)-1]
+				} else {
+					d.displayed = d.relevant[:min(len(d.relevant), space)]
+					d.selected = 0
+					d.offset = 0
 				}
 			}
 		}

@@ -3,34 +3,49 @@
 
 package tui
 
-import "sort"
+import (
+	"sort"
+	"unicode"
+)
 
 type trie struct {
-	m    map[byte]*trie
-	word []byte
-	idx  []int
+	m   map[rune]*trie
+	idx []int
 }
 
 func newTrie() *trie {
 	return &trie{
-		m: map[byte]*trie{},
+		m: map[rune]*trie{},
 	}
 }
 
-func (t *trie) Add(word []byte, i int) {
+func (t *trie) Add(word string, i int) {
 	r := t
-	var escape bool
+	var escape, isLetter bool
 	for _, b := range word {
-		if escape && isEscapeEnd(b) {
+		if escape && isEscapeEnd(byte(b)) {
 			escape = false
 			continue
-		} else if isEscapeStart(b) {
+		} else if isEscapeStart(byte(b)) {
 			escape = true
 		}
 		if escape {
 			continue
 		}
-		// todo: skip printable non-alphanumeric characters
+		if b == ' ' {
+			if r != t {
+				r.idx = append(r.idx, i)
+			}
+			r = t
+			continue
+		}
+		isLetter = unicode.IsLetter(b)
+		if !(isLetter || unicode.IsDigit(b)) {
+			continue
+		}
+		if isLetter {
+			b = unicode.ToLower(b)
+		}
 		s, ok := r.m[b]
 		if !ok {
 			s = newTrie()
@@ -39,36 +54,54 @@ func (t *trie) Add(word []byte, i int) {
 		r = s
 	}
 	r.idx = append(r.idx, i)
-	r.word = word // TODO: strip escape sequences
 }
 
-func (t *trie) Prefix(prefix []byte, limit int) []int {
+func (t *trie) Prefix(prefix string) []int {
 	r := t
+	var isLetter bool
 	for _, b := range prefix {
+		isLetter = unicode.IsLetter(b)
+		if !(isLetter || unicode.IsDigit(b)) {
+			continue
+		}
+		if isLetter {
+			b = unicode.ToLower(b)
+		}
 		s, ok := r.m[b]
 		if !ok {
 			return nil
 		}
 		r = s
 	}
-	return r.Indexes(limit)
+	return r.Indexes()
 }
 
-func (t *trie) Indexes(limit int) (out []int) {
+func (t *trie) dfs(s string) []string {
+	var out []string
+	if len(t.idx) > 0 {
+		out = append(out, s)
+	}
+	for k, v := range t.m {
+		out = append(out, v.dfs(s+string(k))...)
+	}
+	return out
+}
+
+func (t *trie) Words() (out []string) {
+	words := t.dfs("")
+	sort.Strings(words)
+	return words
+}
+
+func (t *trie) Indexes() (out []int) {
 	q := []*trie{t}
 	for len(q) > 0 {
 		r := q[0]
 		q = q[1:]
-		if len(out) >= limit {
-			break
-		}
 		out = append(out, r.idx...)
 		for _, s := range r.m {
 			q = append(q, s)
 		}
-	}
-	if len(out) > limit {
-		out = out[:limit]
 	}
 	// keep output in the same order
 	sort.Ints(out)
