@@ -261,17 +261,6 @@ func (d *dropdown) getContext() context.Context {
 	return d.Ctx
 }
 
-type bbuf []byte
-
-func (b *bbuf) String() string {
-	return string(*b)
-}
-
-func (b *bbuf) Write(p []byte) (n int, err error) {
-	*b = append(*b, p...)
-	return len(p), nil
-}
-
 // render displays the dropdown
 func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
