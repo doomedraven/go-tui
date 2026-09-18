@@ -121,9 +121,7 @@ func (d *dropdown[T]) render() {
 	var buf bytes.Buffer
 	var prefix int
 	for i, item := range d.Items {
-		if !d.isView {
-			fmt.Fprint(&buf, "\r") // ensure we start from the leftmost position
-		}
+		fmt.Fprint(&buf, "\r") // ensure we start from the leftmost position
 		if i == 0 {
 			prefix, _ = fmt.Fprintf(&buf, "%s ", d.Label)
 		} else {
@@ -131,7 +129,7 @@ func (d *dropdown[T]) render() {
 				fmt.Fprintf(&buf, " ")
 			}
 		}
-		// TODO: print spaces till the end of the terminal width
+		// TODO: print spaces till the end of the terminal width except for the last line
 		if i == d.selected {
 			fmt.Fprintf(&buf, "\033[36m> %s\033[0m\n", fmt.Sprint(item)) // cyan color for selected item
 		} else {
@@ -144,50 +142,38 @@ func (d *dropdown[T]) render() {
 
 // Show displays the dropdown and handles user input
 func (d *dropdown[T]) run() (int, error) {
-	if !d.isView {
-		restore, err := d.makeRawTerm()
-		if err != nil {
-			return -1, err
-		}
-		defer restore()
+	restore, err := d.makeRawTerm()
+	if err != nil {
+		return -1, err
 	}
+	defer restore()
 	d.render()
 	for {
 		space := len(d.Items)
 		select {
 		case <-d.Ctx.Done():
-			if d.isView {
-				d.io.clear(space)
-			}
+			d.io.clear(space)
 			return -1, d.Ctx.Err()
 		default:
 			key, err := d.io.ReadRune()
 			if err != nil { // Ctrl+C or Ctrl+D
-				if d.isView {
-					d.io.clear(space)
-				}
+				d.io.clear(space)
 				return -1, err
 			}
 			switch key {
 			case keyEnter:
-				if d.isView {
-					d.io.clear(space)
-				}
+				d.io.clear(space)
 				return d.selected, nil
 			case '↑':
 				if d.selected > 0 {
 					d.selected--
-					if d.isView {
-						d.io.clear(space)
-					}
+					d.io.clear(space)
 					d.render()
 				}
 			case '↓':
 				if d.selected < len(d.Items)-1 {
 					d.selected++
-					if d.isView {
-						d.io.clear(space)
-					}
+					d.io.clear(space)
 					d.render()
 				}
 			}

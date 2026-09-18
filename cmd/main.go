@@ -55,5 +55,5 @@ func main() {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	fmt.Printf("\nYou selected: %s\n", selected)
+	fmt.Printf("You selected: %s\n", selected)
 }
