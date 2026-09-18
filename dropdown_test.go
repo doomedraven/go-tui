@@ -162,3 +162,46 @@ func TestMoreItemsUp(t *testing.T) {
 	assert.Equal(t, "Pick letter: A\n", <-out)
 	assert.Equal(t, "A", <-res)
 }
+
+func otherDropdownForTest(t *testing.T) (in, out chan string, result chan string) {
+	cio, opts := testIO(t, 12, 4)
+	result = make(chan string)
+	go func() {
+		defer close(result)
+		v, err := Dropdown("Neque porro", []string{
+			"Lorem ipsum",
+			"dolor sit amet",
+			"adipiscing elit",
+			"Quisque porttitor",
+			"condimentum libero",
+		}, opts)
+		assert.NoError(t, err)
+		result <- v
+	}()
+	return cio.In, cio.Out, result
+}
+
+func TestDropdownFiltering(t *testing.T) {
+	in, out, res := otherDropdownForTest(t)
+	assert.Equal(t, "\rNeque porro \n\r+ Lorem ip…\n\r- dolor si…\n\r~ 3 of 5 more\n\r", <-out)
+	in <- "c"
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ condimen…\n\r",
+		<-out)
+	in <- "\x7f" // backspace
+	assert.Equal(t,
+		"\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\rNeque porro \n\r+ Lorem ip…\n\r- dolor si…\n\r~ 3 of 5 more\n\r",
+		<-out)
+	in <- "l"
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ Lorem ip…\n\r- condimen…\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r\rNeque porro \n\r- Lorem ip…\n\r+ condimen…\n\r",
+		<-out)
+	in <- "\x0d" // enter
+	assert.Equal(t, "\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r", <-out)
+	assert.Equal(t, "Neque porro: condimentum libero\n", <-out)
+	assert.Equal(t, "condimentum libero", <-res)
+}

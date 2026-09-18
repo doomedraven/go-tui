@@ -456,7 +456,7 @@ func (d *dropdown) run() (int, error) {
 					typed = typed[:len(typed)-1]
 					d.relevant = d.trie.Prefix(string(typed))
 				} else {
-					d.displayed = d.relevant[:min(len(d.relevant), len(d.displayed), space)]
+					d.displayed = d.relevant[:min(len(d.relevant), displayed, space)]
 					d.selected = 0
 					d.offset = 0
 				}

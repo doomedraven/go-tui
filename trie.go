@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"slices"
 	"sort"
 	"unicode"
 )
@@ -73,7 +74,9 @@ func (t *trie) Prefix(prefix string) []int {
 		}
 		r = s
 	}
-	return r.Indexes()
+	out := r.Indexes()
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func (t *trie) dfs(s string) []string {

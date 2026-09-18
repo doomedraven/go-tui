@@ -20,10 +20,11 @@ func main() {
 	v, err := tui.Dropdown("Samples", []Sample{
 		{Name: "Alice", Age: 20},
 		{Name: "Bob", Age: 30},
+		{Name: "Василь", Age: 50},
 		{Name: "Charlie", Age: 40},
 	}, tui.WithTimeout(60*time.Second),
-		tui.WithActiveItemTemplate(`-> {{.Name}} {{ dim "(age: " .Age ")" }}`),
-		tui.WithInactiveItemTemplate(`.. {{.Name}}`),
+		tui.WithActiveItemTemplate(`→ {{.Name}} {{ dim "(age: " .Age ")" }}`),
+		tui.WithInactiveItemTemplate(`~ {{.Name}}`),
 		tui.WithHide(),
 	)
 	if err != nil {
