@@ -18,7 +18,11 @@ type dropdown struct {
 	Ctx          context.Context
 	Label        string
 	Items        []any
-	displayed    []any
+	trie         *trie
+	inactive     []bbuf
+	widths       []int
+	relevant     []int
+	displayed    []int
 	Default      any
 	Hide         bool
 	OneReturn    bool
@@ -270,27 +274,23 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	var err error
 	total := len(d.Items)
 	height := min(total, io.Height/2)
-	if len(d.displayed) == 0 {
-		d.displayed = d.Items[:height]
-	}
 	var longest int
-	// this can be cached later
-	items := make([]bbuf, len(d.displayed))
-	widths := make([]int, len(d.displayed))
-	for i, item := range d.displayed {
-		if i == d.selected {
-			err = d.activeItemTemplate.Execute(&items[i], item)
-			if err != nil {
-				return fmt.Errorf("active: %w", err)
-			}
-		} else {
-			err = d.inactiveItemTemplate.Execute(&items[i], item)
+	if len(d.displayed) == 0 {
+		d.trie = newTrie()
+		d.inactive = make([]bbuf, len(d.Items))
+		d.widths = make([]int, len(d.Items))
+		d.relevant = make([]int, len(d.Items))
+		for i, item := range d.Items {
+			err = d.inactiveItemTemplate.Execute(&d.inactive[i], item)
 			if err != nil {
 				return fmt.Errorf("inactive: %w", err)
 			}
+			d.trie.Add(d.inactive[i], i)
+			d.widths[i] = width(d.inactive[i])
+			d.relevant[i] = i
+			longest = max(longest, d.widths[i])
 		}
-		widths[i] = width(items[i])
-		longest = max(longest, widths[i])
+		d.displayed = d.relevant[:height]
 	}
 	var bufMore bbuf
 	if total > len(d.displayed) {
@@ -303,7 +303,9 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 		}
 		longest = max(longest, width(bufMore))
 	}
-	for i := range d.displayed {
+	var item bbuf
+	var itemW int
+	for i, j := range d.displayed {
 		buf.WriteByte('\r') // ensure we start from the leftmost position
 		if i == 0 {
 			label := d.labelBuf.Bytes()
@@ -328,15 +330,26 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 				buf.WriteByte(' ')
 			}
 		}
-		if widths[i] > io.Width {
-			trunc := []byte(truncateASCII(string(items[i]), io.Width-1))
-			if trunc[len(trunc)-1] != '\n' {
-				trunc = append(trunc, '\n')
+		if i == d.selected {
+			item = nil // clear buffer
+			// only active item is re-rendered
+			err = d.activeItemTemplate.Execute(&item, d.Items[j])
+			if err != nil {
+				return fmt.Errorf("active: %w", err)
 			}
-			buf.Write(trunc)
+			itemW = width(item)
 		} else {
-			buf.Write(items[i])
+			item = d.inactive[j]
+			itemW = d.widths[j]
 		}
+		if itemW > io.Width {
+			// this may fail if active item is wider than the terminal, but we can solve this later
+			item = []byte(truncateASCII(string(item), io.Width-1))
+			if item[len(item)-1] != '\n' {
+				item = append(item, '\n')
+			}
+		}
+		buf.Write(item)
 	}
 	if total > len(d.displayed) {
 		buf.WriteByte('\r') // always display a line to avoid flickering
@@ -412,14 +425,14 @@ func (d *dropdown) run() (int, error) {
 			case '↑':
 				if d.offset > 0 && d.selected == 0 { // page up
 					d.offset--
-					d.displayed = d.Items[d.offset : d.offset+displayed]
+					d.displayed = d.relevant[d.offset : d.offset+displayed]
 				} else if d.selected > 0 {
 					d.selected--
 				}
 			case '↓':
 				if d.offset+displayed < len(d.Items) { // page down
 					d.offset++
-					d.displayed = d.Items[d.offset : d.offset+displayed]
+					d.displayed = d.relevant[d.offset : d.offset+displayed]
 				} else if d.selected < displayed-1 {
 					d.selected++
 				}
