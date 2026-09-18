@@ -23,26 +23,22 @@ var defaultIO = &tio{
 	Writer: os.Stderr,
 }
 
-type incr struct {
-	chunk []byte
-	lines int
-}
-
-func NewIO() *chanIO {
+func NewIO(ctx context.Context) *chanIO {
 	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
-	h = 3
+	head := &view{
+		width:  w,
+		height: h,
+	}
 	cio := &chanIO{
-		ctx:    context.Background(),
+		ctx:    ctx,
 		In:     make(chan []byte),
 		Out:    make(chan []byte),
 		width:  w,
 		height: h,
-		frozen: &view{
-			width:  w,
-			height: h,
-		},
+		head:   head,
+		tail:   head,
 	}
-	fmt.Printf("w:%d, h:%d\n", w, h)
+	// fmt.Printf("w:%d, h:%d\n", w, h)
 
 	go cio.forwardTo(os.Stderr)
 	go io.Copy(cio, os.Stdin)
@@ -57,42 +53,39 @@ type chanIO struct {
 	ctx context.Context
 
 	width, height int
-	frozen        *view
+	head, tail    *view
 }
 
 func (i *chanIO) forwardTo(w io.Writer) {
+	revert, _ := makeRawTerm()
+	defer revert()
 	for {
 		select {
 		case <-i.ctx.Done():
 			return
 		case line := <-i.Out:
-			i.frozen.Write(line) // fill buffer
-			if len(i.frozen.lines) < i.height {
-				w.Write(line)
-			} else {
-				space := i.height
-				var buf bytes.Buffer
-				// Move cursor up to the beginning of the dropdown
-				fmt.Fprintf(&buf, "\033[%dA", space)
-				// Clear each line
-				for i := 0; i < space; i++ {
-					fmt.Fprint(&buf, "\r")     // return to start of line
-					fmt.Fprint(&buf, "\033[K") // clear current line
-					if i < space-1 {
-						fmt.Fprint(&buf, "\033[1B") // move cursor down if not last line
-					}
+			var buf bytes.Buffer
+			i.tail.Write(line) // fill buffer
+			space := i.head.combinedHeight()
+			// Move cursor up to the beginning of the dropdown
+			fmt.Fprintf(&buf, "\x1b[%dA", space)
+			// Clear each line
+			for i := 0; i < space; i++ {
+				fmt.Fprint(&buf, "\r")     // return to start of line
+				fmt.Fprint(&buf, "\x1b[K") // clear current line
+				if i < space-1 {
+					fmt.Fprint(&buf, "\x1b[1B") // move cursor down if not last line
 				}
-				// Move cursor back up to the beginning and to the start of the line
-				if space > 1 {
-					// -1 words well for mid scroll, but -1 is good for screen redraw
-					fmt.Fprintf(&buf, "\033[%dA\r", space-2)
-				}
-				i.frozen.lines = i.frozen.lines[len(i.frozen.lines)-i.height:]
-				for _, line := range i.frozen.lines {
-					buf.Write(line)
-				}
-				_, _ = buf.WriteTo(w)
 			}
+			// Move cursor back up to the beginning and to the start of the line
+			if space > 1 {
+				// -1 words well for mid scroll, but -1 is good for screen redraw
+				fmt.Fprintf(&buf, "\x1b[%dA\r", space-1)
+			}
+			i.head.WriteTo(&buf)
+			x := buf.Bytes()
+			w.Write(x[:len(x)-1]) // trim last newline
+			// _, _ = buf.WriteTo(w)
 		}
 	}
 }

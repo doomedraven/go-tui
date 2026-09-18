@@ -44,7 +44,7 @@ const (
 
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
-	n, err := t.Read(buf)
+	n, err := os.Stdin.Read(buf) // todo: fixme
 	if err == io.EOF {
 		// Return EOT (Ctrl+D) character
 		return 4, io.EOF

@@ -24,6 +24,7 @@ type dropdown[T any] struct {
 
 	selected int
 	io       *termIO
+	isView   bool
 
 	makeRawTerm func() (func() error, error)
 }
@@ -46,13 +47,17 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	return items[i], nil
 }
 
-func DropdownIndex[T any](label string, items []T, opts ...opt) (int, error) {
-	d, err := newDropdown[T](opts)
+func DropdownIndex[T any](label string, items []T, o ...opt) (int, error) {
+	d, err := newDropdown[T]()
 	if err != nil {
 		return -1, err
 	}
 	d.Label = label
 	d.Items = items
+	err = opts(o).Apply(d)
+	if err != nil {
+		return 0, err
+	}
 	i, err := d.run()
 	if err != nil {
 		return -1, err
@@ -63,7 +68,7 @@ func DropdownIndex[T any](label string, items []T, opts ...opt) (int, error) {
 	return i, nil
 }
 
-func newDropdown[T any](o opts) (*dropdown[T], error) {
+func newDropdown[T any]() (*dropdown[T], error) {
 	d := &dropdown[T]{
 		Ctx:         context.Background(),
 		Label:       "Select from list",
@@ -71,10 +76,6 @@ func newDropdown[T any](o opts) (*dropdown[T], error) {
 		io: &termIO{
 			ReadWriter: defaultIO,
 		},
-	}
-	err := o.Apply(d)
-	if err != nil {
-		return nil, err
 	}
 	return d, nil
 }
@@ -85,6 +86,23 @@ func (d *dropdown[T]) getTIO() *tio {
 		return nil
 	}
 	return io
+}
+
+// implements [withWriter]
+func (d *dropdown[T]) setWriter(w io.Writer) {
+	tui, ok := w.(*Tui)
+	if ok {
+		d.isView = true
+		c := tui.prependView()
+		c.height = len(d.Items) + 1
+		c.next.height -= c.height // TODO: propagate down
+		w = c
+	}
+	tio, ok := d.io.ReadWriter.(*tio)
+	if !ok {
+		return
+	}
+	tio.Writer = w
 }
 
 // implements [withContext]
@@ -103,7 +121,9 @@ func (d *dropdown[T]) render() {
 	var buf bytes.Buffer
 	var prefix int
 	for i, item := range d.Items {
-		fmt.Fprint(&buf, "\r") // ensure we start from the leftmost position
+		if !d.isView {
+			fmt.Fprint(&buf, "\r") // ensure we start from the leftmost position
+		}
 		if i == 0 {
 			prefix, _ = fmt.Fprintf(&buf, "%s ", d.Label)
 		} else {
@@ -124,38 +144,50 @@ func (d *dropdown[T]) render() {
 
 // Show displays the dropdown and handles user input
 func (d *dropdown[T]) run() (int, error) {
-	restore, err := d.makeRawTerm()
-	if err != nil {
-		return -1, err
+	if !d.isView {
+		restore, err := d.makeRawTerm()
+		if err != nil {
+			return -1, err
+		}
+		defer restore()
 	}
-	defer restore()
 	d.render()
 	for {
 		space := len(d.Items)
 		select {
 		case <-d.Ctx.Done():
-			d.io.clear(space)
+			if d.isView {
+				d.io.clear(space)
+			}
 			return -1, d.Ctx.Err()
 		default:
 			key, err := d.io.ReadRune()
 			if err != nil { // Ctrl+C or Ctrl+D
-				d.io.clear(space)
+				if d.isView {
+					d.io.clear(space)
+				}
 				return -1, err
 			}
 			switch key {
 			case keyEnter:
-				d.io.clear(space)
+				if d.isView {
+					d.io.clear(space)
+				}
 				return d.selected, nil
 			case '↑':
 				if d.selected > 0 {
 					d.selected--
-					d.io.clear(space)
+					if d.isView {
+						d.io.clear(space)
+					}
 					d.render()
 				}
 			case '↓':
 				if d.selected < len(d.Items)-1 {
 					d.selected++
-					d.io.clear(space)
+					if d.isView {
+						d.io.clear(space)
+					}
 					d.render()
 				}
 			}

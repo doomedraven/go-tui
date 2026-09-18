@@ -11,12 +11,11 @@ import (
 type view struct {
 	width, height int
 	lines         [][]byte
+	next          *view
 	mu            sync.Mutex
 }
 
 func isEscapeEnd(r byte) bool {
-	// TODO: is '\x40'-'\x5A' is a subset of '@'-'~' or not?..
-	// return (r >= '@' && r <= '~') || (r >= '\x40' && r <= '\x5a')
 	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
 }
 
@@ -31,13 +30,51 @@ func NewView(w, h int) *view {
 	}
 }
 
+func (v *view) appendChild() *view {
+	c := &view{
+		width:  v.width,
+		height: v.height,
+	}
+	v.next = c
+	return c
+}
+
+func (v *view) combinedHeight() int {
+	var n int
+	curr := v
+	for curr != nil {
+		n += curr.height
+		curr = curr.next
+	}
+	return n
+}
+
+func (v *view) numLines() int {
+	var n int
+	curr := v
+	for curr != nil {
+		n += len(curr.lines)
+		curr = curr.next
+	}
+	return n
+}
+
 func (v *view) WriteTo(w io.Writer) (int64, error) {
 	var total int64
-	for _, l := range v.lines {
-		b, _ := w.Write(l)
-		total += int64(b)
-		w.Write([]byte{'\n'})
-		total++
+	curr := v
+	for curr != nil {
+		if len(curr.lines) > curr.height {
+			curr.lines = curr.lines[len(curr.lines)-curr.height+1:]
+		}
+		for _, l := range curr.lines {
+			b, err := w.Write(l)
+			if err != nil {
+				return total, err
+			}
+			w.Write([]byte{'\n'})
+			total += int64(b) + 1
+		}
+		curr = curr.next
 	}
 	return total, nil
 }

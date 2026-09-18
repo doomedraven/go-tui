@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -66,4 +67,18 @@ without any escaping characters.`,
 			assert.Equal(t, tt.out, lines)
 		})
 	}
+}
+
+func TestViewLinkedList(t *testing.T) {
+	v := &view{
+		lines: [][]byte{[]byte("a"), []byte("b")},
+		next: &view{
+			lines: [][]byte{[]byte("c"), []byte("d")},
+		},
+	}
+	assert.Equal(t, 4, v.numLines())
+
+	var buf bytes.Buffer
+	v.WriteTo(&buf)
+	assert.Equal(t, "a\nb\nc\nd\n", buf.String())
 }

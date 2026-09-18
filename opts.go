@@ -44,17 +44,17 @@ func WithInput(r io.Reader) opt {
 	}
 }
 
-func WithOutput[T any](w io.Writer) opt {
+type withWriter interface {
+	setWriter(io.Writer)
+}
+
+func WithOutput(w io.Writer) opt {
 	return func(d any) error {
-		x, ok := d.(getTIO)
+		x, ok := d.(withWriter)
 		if !ok {
 			return fmt.Errorf("cannot set IO")
 		}
-		tio := x.getTIO()
-		if tio == nil {
-			return fmt.Errorf("cannot set IO")
-		}
-		tio.Writer = w
+		x.setWriter(w)
 		return nil
 	}
 }
