@@ -97,6 +97,14 @@ func width(chunk []byte) int {
 	return w
 }
 
+func truncateVisible(chunk []byte, maxLen int, tailer byte) (out []byte) {
+	out = []byte(truncateASCII(string(chunk), maxLen))
+	if out[len(out)-1] != tailer {
+		out = append(out, tailer)
+	}
+	return
+}
+
 func truncateASCII(chunk string, maxLen int) (out string) {
 	defer func() {
 		if r := recover(); r != nil {

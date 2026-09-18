@@ -319,10 +319,7 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 			// proper solution would be to use viewports and scroll the label as well
 			prefix = width(label)
 			if prefix > io.Width {
-				label = []byte(truncateASCII(string(label), io.Width-1))
-				if label[len(label)-1] != ' ' {
-					label = append(label, ' ')
-				}
+				label = truncateVisible(label, io.Width-1, ' ')
 			}
 			buf.Write(label)
 			if d.LabelNewLine || prefix+longest >= io.Width {
@@ -350,10 +347,7 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 		}
 		if itemW > io.Width {
 			// this may fail if active item is wider than the terminal, but we can solve this later
-			item = []byte(truncateASCII(string(item), io.Width-1))
-			if item[len(item)-1] != '\n' {
-				item = append(item, '\n')
-			}
+			item = truncateVisible(item, io.Width-1, '\n')
 		}
 		buf.Write(item)
 	}
