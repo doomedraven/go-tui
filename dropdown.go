@@ -6,6 +6,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -294,23 +295,24 @@ func (d *dropdown) run() (int, error) {
 			return -1, d.Ctx.Err()
 		default:
 			key, err := d.io.ReadRune()
-			if err != nil { // Ctrl+C or Ctrl+D
-				d.io.clear(space)
+			d.io.clear(space)
+			if err != nil {
+				if errors.Is(err, ErrUnknownRune) {
+					continue
+				}
+				// Ctrl+C or Ctrl+D
 				return -1, err
 			}
 			switch key {
 			case keyEnter:
-				d.io.clear(space)
 				return d.selected, nil
 			case '↑':
 				if d.selected > 0 {
 					d.selected--
-					d.io.clear(space)
 				}
 			case '↓':
 				if d.selected < len(d.Items)-1 {
 					d.selected++
-					d.io.clear(space)
 				}
 			}
 		}

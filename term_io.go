@@ -38,16 +38,18 @@ func (t *termIO) clear(space int) error {
 }
 
 const (
-	keyCtrlC = 3
+	keyCtrlC = 0x03
+	keyCtrlD = 0x04
 	keyEnter = 0x0d
 )
+
+var ErrUnknownRune = fmt.Errorf("unknown rune")
 
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
 	n, err := t.Read(buf) // todo: fixme
 	if err == io.EOF {
-		// Return EOT (Ctrl+D) character
-		return 4, io.EOF
+		return keyCtrlD, io.EOF
 	}
 	if n >= 3 && buf[0] == 0x1b && buf[1] == 0x5b {
 		switch buf[2] {
@@ -58,9 +60,14 @@ func (t *termIO) ReadRune() (rune, error) {
 		}
 	}
 	if n > 1 {
-		return 0, fmt.Errorf("unknown rune: %v", buf)
+		return 0, fmt.Errorf("%w: %x", ErrUnknownRune, buf)
 	}
-	return rune(buf[0]), nil
+	switch buf[0] {
+	case keyCtrlC, keyCtrlD:
+		return 0, io.EOF
+	default:
+		return rune(buf[0]), nil
+	}
 }
 
 func isTerminal() bool {
