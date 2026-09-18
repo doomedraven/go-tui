@@ -30,8 +30,7 @@ type incr struct {
 
 func NewIO() *chanIO {
 	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
-	w = 25
-	h = 10
+	h = 3
 	cio := &chanIO{
 		ctx:    context.Background(),
 		In:     make(chan []byte),
@@ -85,7 +84,8 @@ func (i *chanIO) forwardTo(w io.Writer) {
 				}
 				// Move cursor back up to the beginning and to the start of the line
 				if space > 1 {
-					fmt.Fprintf(&buf, "\033[%dA\r", space-1)
+					// -1 words well for mid scroll, but -1 is good for screen redraw
+					fmt.Fprintf(&buf, "\033[%dA\r", space-2)
 				}
 				i.frozen.lines = i.frozen.lines[len(i.frozen.lines)-i.height:]
 				for _, line := range i.frozen.lines {
