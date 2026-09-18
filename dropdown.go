@@ -416,6 +416,7 @@ func (d *dropdown) run() (int, error) {
 				if errors.Is(err, ErrUnknownRune) {
 					continue
 				}
+				frame.WriteTo(io) // clear the screen
 				// Ctrl+C or Ctrl+D
 				return -1, err
 			}
@@ -441,7 +442,7 @@ func (d *dropdown) run() (int, error) {
 				if len(typed) > 0 {
 					typed = typed[:len(typed)-1]
 					d.relevant = d.trie.Prefix(string(typed))
-					d.displayed = d.relevant[:min(len(d.relevant), space)]
+					d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
 					d.selected = 0
 					d.offset = 0
 				}
@@ -453,8 +454,9 @@ func (d *dropdown) run() (int, error) {
 				}
 				if len(d.relevant) == 0 {
 					typed = typed[:len(typed)-1]
+					d.relevant = d.trie.Prefix(string(typed))
 				} else {
-					d.displayed = d.relevant[:min(len(d.relevant), space)]
+					d.displayed = d.relevant[:min(len(d.relevant), len(d.displayed), space)]
 					d.selected = 0
 					d.offset = 0
 				}
