@@ -49,11 +49,11 @@ func (t *termIO) ReadRune() (rune, error) {
 		// Return EOT (Ctrl+D) character
 		return 4, io.EOF
 	}
-	if n >= 3 && buf[0] == 27 && buf[1] == 91 {
+	if n >= 3 && buf[0] == 0x1b && buf[1] == 0x5b {
 		switch buf[2] {
-		case 65: // Up arrow.
+		case 0x41: // Up arrow.
 			return '↑', nil
-		case 66: // Down arrow.
+		case 0x42: // Down arrow.
 			return '↓', nil
 		}
 	}

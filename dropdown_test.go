@@ -41,11 +41,11 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 		}
 	}()
 	t.Cleanup(func() {
+		cancel()
 		close(ins)
 		close(outs)
 		close(cio.In)
 		close(cio.Out)
-		cancel()
 	})
 	result = make(chan bool)
 	go func() {
@@ -86,13 +86,30 @@ func TestDenyCase(t *testing.T) {
 	assert.Equal(t,
 		"\rAre you sure? \x1b[36m> Yes\x1b[0m\n\r                No\n\r",
 		<-out)
-	in <- "\x1b\x5b\x42"
+	in <- "\x1b\x5b\x42" // down
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
 	assert.Equal(t,
 		"\rAre you sure?   Yes\n\r              \x1b[36m> No\x1b[0m\n\r",
 		<-out)
-	in <- "\x0d"
+	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
 	assert.Equal(t, "Are you sure?: No\n", <-out)
 	assert.Equal(t, false, <-res)
+}
+
+func TestDownAndUpCase(t *testing.T) {
+	in, out, res := confirmForTest(t)
+	assert.Equal(t,
+		"\rAre you sure? \x1b[36m> Yes\x1b[0m\n\r                No\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down
+	<-out                // clear
+	<-out                // render
+	in <- "\x1b\x5b\x41" // up
+	<-out                // clear
+	<-out                // render
+	in <- "\x0d"         // enter
+	<-out                // clear
+	assert.Equal(t, "Are you sure?: Yes\n", <-out)
+	assert.Equal(t, true, <-res)
 }
