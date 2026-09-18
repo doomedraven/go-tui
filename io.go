@@ -31,8 +31,8 @@ func NewIO(ctx context.Context) *chanIO {
 	}
 	cio := &chanIO{
 		ctx:    ctx,
-		In:     make(chan []byte),
-		Out:    make(chan []byte),
+		In:     make(chan string),
+		Out:    make(chan string),
 		width:  w,
 		height: h,
 		head:   head,
@@ -47,8 +47,8 @@ func NewIO(ctx context.Context) *chanIO {
 
 // implements [io.ReadWriter]
 type chanIO struct {
-	In  chan []byte
-	Out chan []byte
+	In  chan string
+	Out chan string
 
 	ctx context.Context
 
@@ -63,7 +63,7 @@ func (i *chanIO) forwardTo(w io.Writer) {
 			return
 		case line := <-i.Out:
 			var buf bytes.Buffer
-			i.tail.Write(line) // fill buffer
+			i.tail.Write([]byte(line)) // fill buffer
 			space := i.head.combinedHeight()
 			// Move cursor up to the beginning of the dropdown
 			fmt.Fprintf(&buf, "\x1b[%dA", space)
@@ -105,7 +105,7 @@ func (i *chanIO) Write(p []byte) (n int, err error) {
 	select {
 	case <-i.ctx.Done():
 		return 0, io.EOF
-	case i.Out <- p:
+	case i.Out <- string(p):
 		return len(p), nil
 	}
 }

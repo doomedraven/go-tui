@@ -11,68 +11,51 @@ import (
 	"github.com/nfx/go-tui/internal/assert"
 )
 
-func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
+func testIO(t *testing.T, width, height int, o ...opt) (*chanIO, opt) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cio := &chanIO{
 		ctx: ctx,
-		In:  make(chan []byte),
-		Out: make(chan []byte),
+		In:  make(chan string),
+		Out: make(chan string),
 	}
-	ins := make(chan string)
-	outs := make(chan string)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case stdin := <-ins:
-				select {
-				case <-ctx.Done():
-					return
-				case cio.In <- []byte(stdin):
-				}
-			case stdout := <-cio.Out:
-				select {
-				case <-ctx.Done():
-					return
-				case outs <- string(stdout):
-				}
-			}
-		}
-	}()
 	t.Cleanup(func() {
 		cancel()
-		close(ins)
-		close(outs)
 		close(cio.In)
 		close(cio.Out)
 	})
+	return cio, WithOptions(append(opts{
+		WithInput(cio),
+		WithOutput(cio),
+		WithContext(ctx),
+		dropdownOpt(func(d *dropdown) error {
+			d.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
+				return &termIO{
+					Reader:  in,
+					Writer:  out,
+					Width:   width,
+					Height:  height,
+					Restore: func() error { return nil },
+				}, nil
+			}
+			return nil
+		}),
+		WithLabelTemplate("{{ . }}"),
+		WithActiveItemTemplate("+ {{ . }}"),
+		WithInactiveItemTemplate("- {{ . }}"),
+		WithMoreItemsTemplate("~ {{ .More }} of {{ .Total }} more"),
+		WithAnswerTemplate("{{ .Label }}: {{ .Answer }}"),
+	}, o...,
+	)...)
+}
+
+func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
+	cio, opts := testIO(t, 80, 120)
 	result = make(chan bool)
 	go func() {
 		defer close(result)
-		result <- Confirm("Are you sure?",
-			WithInput(cio),
-			WithOutput(cio),
-			dropdownOpt(func(d *dropdown) error {
-				// TODO: improve the UX for testing
-				d.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
-					return &termIO{
-						Reader:  in,
-						Writer:  out,
-						Width:   120,
-						Height:  80,
-						Restore: func() error { return nil },
-					}, nil
-				}
-				return nil
-			}),
-			WithLabelTemplate("{{ . }}"),
-			WithActiveItemTemplate("+ {{ . }}"),
-			WithInactiveItemTemplate("- {{ . }}"),
-			WithAnswerTemplate("{{ .Label }}: {{ .Answer }}"),
-		)
+		result <- Confirm("Are you sure?", opts)
 	}()
-	return ins, outs, result
+	return cio.In, cio.Out, result
 }
 
 func TestSimpleCase(t *testing.T) {
@@ -82,9 +65,7 @@ func TestSimpleCase(t *testing.T) {
 		<-out)
 	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
-	assert.Equal(t, "Are you sure?", <-out)
-	assert.Equal(t, ": ", <-out)
-	assert.Equal(t, "Yes", <-out)
+	assert.Equal(t, "Are you sure?: Yes\n", <-out)
 	assert.Equal(t, true, <-res)
 }
 
@@ -94,15 +75,12 @@ func TestDenyCase(t *testing.T) {
 		"\rAre you sure? + Yes\n\r              - No\n\r",
 		<-out)
 	in <- "\x1b\x5b\x42" // down
-	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
 	assert.Equal(t,
-		"\rAre you sure? - Yes\n\r              + No\n\r",
+		"\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\rAre you sure? - Yes\n\r              + No\n\r",
 		<-out)
 	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r", <-out)
-	assert.Equal(t, "Are you sure?", <-out)
-	assert.Equal(t, ": ", <-out)
-	assert.Equal(t, "No", <-out)
+	assert.Equal(t, "Are you sure?: No\n", <-out)
 	assert.Equal(t, false, <-res)
 }
 
@@ -112,15 +90,75 @@ func TestDownAndUpCase(t *testing.T) {
 		"\rAre you sure? + Yes\n\r              - No\n\r",
 		<-out)
 	in <- "\x1b\x5b\x42" // down
-	<-out                // clear
-	<-out                // render
+	<-out                // frame render
 	in <- "\x1b\x5b\x41" // up
-	<-out                // clear
-	<-out                // render
+	<-out                // frame render
 	in <- "\x0d"         // enter
 	<-out                // clear
-	assert.Equal(t, "Are you sure?", <-out)
-	assert.Equal(t, ": ", <-out)
-	assert.Equal(t, "Yes", <-out)
+	assert.Equal(t, "Are you sure?: Yes\n", <-out)
 	assert.Equal(t, true, <-res)
+}
+
+func overflowForTest(t *testing.T) (in, out chan string, result chan string) {
+	cio, opts := testIO(t, 12, 4)
+	result = make(chan string)
+	go func() {
+		defer close(result)
+		v, err := Dropdown("Pick letter", []string{
+			"A", "B", "C", "D", "E",
+		}, opts)
+		assert.NoError(t, err)
+		result <- v
+	}()
+	return cio.In, cio.Out, result
+}
+
+func TestMoreItems(t *testing.T) {
+	in, out, res := overflowForTest(t)
+	assert.Equal(t, "\rPick letter \n\r+ A\n\r- B\n\r~ 3 of 5 more\n\r", <-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ B\n\r- C\n\r~ 2 of 5 more\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ C\n\r- D\n\r~ 1 of 5 more\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ D\n\r- E\n\r\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r- D\n\r+ E\n\r\n\r",
+		<-out)
+	in <- "\x1b\x5b\x42" // down, no more items, might bell
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r- D\n\r+ E\n\r\n\r",
+		<-out)
+	in <- "\x1b\x5b\x41" // up
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ D\n\r- E\n\r\n\r",
+		<-out)
+	in <- "\x0d" // enter
+	assert.Equal(t, "\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r", <-out)
+	assert.Equal(t, "Pick letter: D\n", <-out)
+	assert.Equal(t, "D", <-res)
+}
+
+func TestMoreItemsUp(t *testing.T) {
+	in, out, res := overflowForTest(t)
+	assert.Equal(t, "\rPick letter \n\r+ A\n\r- B\n\r~ 3 of 5 more\n\r", <-out)
+	in <- "\x1b\x5b\x42" // down
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ B\n\r- C\n\r~ 2 of 5 more\n\r",
+		<-out)
+	in <- "\x1b\x5b\x41" // up
+	assert.Equal(t,
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rPick letter \n\r+ A\n\r- B\n\r~ 3 of 5 more\n\r",
+		<-out)
+	in <- "\x0d" // enter
+	assert.Equal(t, "\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r", <-out)
+	assert.Equal(t, "Pick letter: A\n", <-out)
+	assert.Equal(t, "A", <-res)
 }

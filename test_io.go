@@ -11,8 +11,8 @@ import (
 
 func NewTestIO() *chanIO {
 	return &chanIO{
-		In:  make(chan []byte),
-		Out: make(chan []byte),
+		In:  make(chan string),
+		Out: make(chan string),
 	}
 }
 func getTerminalWidth() (int, error) {

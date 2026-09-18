@@ -25,6 +25,12 @@ func (o opts) Apply(d any) error {
 	return nil
 }
 
+func WithOptions(o ...opt) opt {
+	return func(a any) error {
+		return opts(o).Apply(a)
+	}
+}
+
 type withIO interface {
 	setWriter(io.Writer)
 	setReader(io.Reader)

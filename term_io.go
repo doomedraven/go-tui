@@ -53,25 +53,23 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 	}, nil
 }
 
-func (t *termIO) clear(space int) error {
+func (t *termIO) clear(space int, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
-	var buf bytes.Buffer
 	// Move cursor up to the beginning of the dropdown
-	fmt.Fprintf(&buf, "\x1b[%dA", space)
+	fmt.Fprintf(buf, "\x1b[%dA", space)
 	// Clear each line
 	for i := 0; i < space; i++ {
-		fmt.Fprint(&buf, "\r")     // return to start of line
-		fmt.Fprint(&buf, "\x1b[K") // clear current line
+		fmt.Fprint(buf, "\r")     // return to start of line
+		fmt.Fprint(buf, "\x1b[K") // clear current line
 		if i < space-1 {
-			fmt.Fprint(&buf, "\x1b[1B") // move cursor down if not last line
+			fmt.Fprint(buf, "\x1b[1B") // move cursor down if not last line
 		}
 	}
 	// Move cursor back up to the beginning and to the start of the line
 	if space > 1 {
-		fmt.Fprintf(&buf, "\x1b[%dA\r", space-1)
+		fmt.Fprintf(buf, "\x1b[%dA\r", space-1)
 	}
-	_, err := buf.WriteTo(t)
-	return err
+	return nil
 }
 
 const (
