@@ -36,7 +36,7 @@ var defaultIO = &tio{
 
 func NewIO(ctx context.Context) *chanIO {
 	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
-	head := &view{
+	head := &viewport{
 		width:  w,
 		height: h,
 	}
@@ -64,7 +64,7 @@ type chanIO struct {
 	ctx context.Context
 
 	width, height int
-	head, tail    *view
+	head, tail    *viewport
 }
 
 func (i *chanIO) forwardTo(w io.Writer) {

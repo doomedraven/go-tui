@@ -23,17 +23,17 @@ type Tui struct {
 	ctx     context.Context
 }
 
-func (t *Tui) prependView() *view {
+func (t *Tui) prependView() *viewport {
 	cio, ok := t.termIO.Writer.(*chanIO)
 	if !ok {
 		panic("cannot get view")
 	}
-	top := &view{next: cio.head, width: cio.width}
+	top := &viewport{next: cio.head, width: cio.width}
 	cio.head = top
 	return top
 }
 
-func (t *Tui) view() *view {
+func (t *Tui) view() *viewport {
 	cio, ok := t.termIO.Writer.(*chanIO)
 	if ok {
 		return cio.head

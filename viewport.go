@@ -8,30 +8,22 @@ import (
 	"sync"
 )
 
-type view struct {
+type viewport struct {
 	width, height int
 	lines         [][]byte
-	next          *view
+	next          *viewport
 	mu            sync.Mutex
 }
 
-func isEscapeEnd(r byte) bool {
-	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
-}
-
-func isEscapeStart(r byte) bool {
-	return r == '\x1b' || r == '\x9b'
-}
-
-func NewView(w, h int) *view {
-	return &view{
+func NewViewport(w, h int) *viewport {
+	return &viewport{
 		width:  w,
 		height: h,
 	}
 }
 
-func (v *view) appendChild() *view {
-	c := &view{
+func (v *viewport) appendChild() *viewport {
+	c := &viewport{
 		width:  v.width,
 		height: v.height,
 	}
@@ -39,7 +31,7 @@ func (v *view) appendChild() *view {
 	return c
 }
 
-func (v *view) combinedHeight() int {
+func (v *viewport) combinedHeight() int {
 	var n int
 	curr := v
 	for curr != nil {
@@ -49,7 +41,7 @@ func (v *view) combinedHeight() int {
 	return n
 }
 
-func (v *view) numLines() int {
+func (v *viewport) numLines() int {
 	var n int
 	curr := v
 	for curr != nil {
@@ -59,7 +51,7 @@ func (v *view) numLines() int {
 	return n
 }
 
-func (v *view) WriteTo(w io.Writer) (int64, error) {
+func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	var total int64
 	curr := v
 	for curr != nil {
@@ -79,76 +71,7 @@ func (v *view) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
-func width(chunk []byte) int {
-	lo, hi, w := 0, len(chunk), 0
-	var escape bool
-	for lo < hi {
-		if escape && isEscapeEnd(chunk[lo]) {
-			escape = false
-		} else if isEscapeStart(chunk[lo]) {
-			escape = true
-			w--
-		}
-		if !escape {
-			w++
-		}
-		lo++
-	}
-	return w
-}
-
-func truncateVisible(chunk []byte, maxLen int, tailer byte) (out []byte) {
-	out = []byte(truncateASCII(string(chunk), maxLen))
-	if out[len(out)-1] != tailer {
-		out = append(out, tailer)
-	}
-	return
-}
-
-func truncateASCII(chunk string, maxLen int) (out string) {
-	defer func() {
-		if r := recover(); r != nil {
-			out = "…" // this is quite a hack
-		}
-	}()
-	lo, hi, w, m := 0, len(chunk), 0, 0
-	var escape bool
-	for lo < hi {
-		if escape && isEscapeEnd(chunk[lo]) {
-			escape = false
-			if chunk[lo] == 'm' {
-				if chunk[lo-1] == '0' {
-					m-- // Select Graphics Rendition (SGR) end
-				} else {
-					m++ // SGR start
-				}
-			}
-		} else if isEscapeStart(chunk[lo]) {
-			escape = true
-			w--
-		}
-		if !escape {
-			if w >= (maxLen - 1) {
-				break
-			}
-			w++
-		}
-		lo++
-	}
-	if lo == hi {
-		return chunk
-	}
-	raw := []rune(chunk)
-	raw = append(raw[:lo], '…')
-	for range m {
-		// reset every SGR
-		raw = append(raw, '\x1b', '[', '0', 'm')
-	}
-	out = string(raw)
-	return
-}
-
-func (v *view) padded(chunk []byte, lo, mid int) (int, int) {
+func (v *viewport) padded(chunk []byte, lo, mid int) (int, int) {
 	pos, line := lo, []byte{}
 	for pos < mid {
 		line = append(line, chunk[pos])
@@ -170,7 +93,7 @@ func (v *view) padded(chunk []byte, lo, mid int) (int, int) {
 
 // see https://notes.burke.libbey.me/ansi-escape-codes/
 // see https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-func (v *view) Write(chunk []byte) (n int, err error) {
+func (v *viewport) Write(chunk []byte) (n int, err error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	lo, mid, hi := 0, 0, len(chunk)
