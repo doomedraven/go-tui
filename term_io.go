@@ -38,12 +38,13 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 		return nil, fmt.Errorf("stdin: %w", ErrNoTTY)
 	}
 	if cio != nil {
+		vp := cio.pushViewport()
 		return &termIO{
 			in:     in,
 			out:    out,
 			Width:  cio.width,
-			Height: -1, // first render will set the height
-			vp:     cio.pushViewport(),
+			Height: vp.height, // first render will set the height
+			vp:     vp,
 			cio:    cio,
 			Restore: func() error {
 				return nil

@@ -84,3 +84,18 @@ func TestViewportLinkedList(t *testing.T) {
 	v.WriteTo(&buf)
 	assert.Equal(t, "\ra\n\rb\n\rc\n\rd\n", buf.String())
 }
+
+func TestWriteToRotated(t *testing.T) {
+	v := &viewport{
+		height:      5,
+		fixedHeight: true,
+		lastLines:   2,
+		lines:       [][]byte{[]byte("a\n"), []byte("b\n"), []byte("aa\n"), []byte("bb\n")},
+		next: &viewport{
+			lines: [][]byte{[]byte("c\n"), []byte("d\n"), []byte("e\n"), []byte("f\n"), []byte("g\n")},
+		},
+	}
+	var buf bytes.Buffer
+	v.WriteTo(&buf)
+	assert.Equal(t, "\raa\n\rbb\n\re\n\rf\n\rg\n", buf.String())
+}

@@ -60,7 +60,9 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	curr := v
 	budget := v.height
 	for curr != nil {
-		if len(curr.lines) > curr.height {
+		if curr.fixedHeight && curr.lastLines > 0 {
+			curr.lines = curr.lines[len(curr.lines)-curr.lastLines:]
+		} else if len(curr.lines) > curr.height {
 			// FIXME: race condition and potential data corruption
 			// TODO: definitely need two offsets, as the top fixed viewport will be the first to be trimmed
 			curr.lines = curr.lines[len(curr.lines)-curr.height:]
@@ -74,8 +76,12 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 			total += int64(b) + 1
 		}
 		budget -= len(curr.lines)
+		if budget <= 0 {
+			break
+		}
 		curr = curr.next
 		if curr != nil {
+			// simplified assumption: tail viewport cannot have fixed height
 			curr.height = budget
 		}
 	}
@@ -167,9 +173,6 @@ func (v *viewport) loop() {
 			return
 		case chunk := <-v.inner:
 			v.lastLines = v.appendToLinebuffer(chunk)
-			if v.fixedHeight {
-				v.height = v.lastLines
-			}
 			select {
 			case <-v.ctx.Done():
 				return

@@ -14,7 +14,6 @@ import (
 
 func main() {
 	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 30*time.Second)
 	w := tui.NewIO(ctx)
 
 	s, err := tui.NewSpinners(tui.WithOutput(w), tui.WithContext(ctx))
@@ -36,7 +35,11 @@ func main() {
 		}),
 	))
 
+	done := make(chan struct{})
+
 	go func() {
+		var counter int
+		var third *tui.Spinner
 		raw, _ := os.ReadFile("/usr/share/dict/words")
 		words := strings.Split(string(raw), "\n")
 		ticks := time.NewTicker(333 * time.Millisecond)
@@ -45,12 +48,30 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticks.C:
+				counter++
 				word := words[rand.Intn(len(words))]
+				first.Update("word of the first: " + word)
+				if counter == 10 {
+					first.Close()
+				}
+				if counter > 11 {
+					if third == nil {
+						third = s.MustAddBackground()
+					}
+					third.Updatef("New spinner for counter: %d", counter)
+				}
+				// if counter == 30 { // FIXME: there's "panic: send on closed channel"
+				// 	s.Close()
+				// }
+				if counter == 50 {
+					done <- struct{}{}
+				}
 				slog.Info("word of the second", "word", word)
 			}
 		}
 	}()
 
-	// tui.Confirm("Do you agree?", tui.WithOutput(w), tui.WithContext(ctx))
-	time.Sleep(30 * time.Second)
+	tui.Confirm("Do you want to continue?", tui.WithOutput(w), tui.WithContext(ctx))
+
+	<-done
 }

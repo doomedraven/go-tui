@@ -75,20 +75,20 @@ func TestNewSpinners(t *testing.T) {
 	first.Update("first: A")
 
 	tick()
-	assert.Equal(t, "\r..  first: A\n\r", <-cio.Out)
+	assert.Equal(t, "\r... first: A\n\r", <-cio.Out)
 
 	second := s.MustAddBackground()
 	second.Update("second: A")
 
 	tick()
-	assert.Equal(t, "\x1b[1A\r\x1b[K\r... first: A\n\r\r..  second: A\n\r", <-cio.Out)
+	assert.Equal(t, "\x1b[1A\r\x1b[K\r .. first: A\n\r\r .. second: A\n\r", <-cio.Out)
 
 	cancel()
 
 	tick()
-	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\r... second: A\n\r", <-cio.Out)
+	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\r  . first: A\n\r\r  . second: A\n\r", <-cio.Out)
 
 	s.Close()
 
-	assert.Equal(t, "\x1b[1A", <-cio.Out)
+	assert.Equal(t, "\x1b[2A", <-cio.Out)
 }

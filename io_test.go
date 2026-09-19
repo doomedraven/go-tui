@@ -69,13 +69,13 @@ func TestChanIO_Forward(t *testing.T) {
 	tick()
 
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r.. spin: A  \n\re           \n\rf           ",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rf           ",
 		<-stdout.C)
 
 	// write one more line
 	fmt.Fprint(cio, "g\n")
 
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r.. spin: A  \n\rf           \n\rg           ",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rg           ",
 		<-stdout.C)
 }

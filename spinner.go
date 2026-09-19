@@ -6,6 +6,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -88,12 +89,21 @@ func (s *Spinners) start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			for _, spinner := range s.state {
+				if spinner == nil {
+					continue
+				}
+				spinner.cancel()
+			}
 			return
 		case ns := <-s.creates:
 			// TODO: write serially in CI mode, as well as when number of spinners
 			// is greater than the height of the terminal
 			s.newSpinner(ns)
 		case update := <-s.updates:
+			if s.state[update.offset] == nil {
+				continue // it's already stopped and we don't care
+			}
 			s.state[update.offset].Message = update.message
 		case offset := <-s.stops:
 			if offset >= 0 && offset < len(s.state) { // remove spinner at offset
@@ -124,6 +134,10 @@ func (s *Spinners) start(ctx context.Context) {
 	}
 }
 
+func (s *Spinners) Close() {
+	s.cancel()
+}
+
 func (s *Spinners) stop() {
 	s.io.clear(s.active, s.io)
 	// s.io.Restore()
@@ -135,6 +149,7 @@ func (s *Spinners) stop() {
 
 type createSpinner struct {
 	ctx         context.Context
+	cancel      context.CancelFunc
 	frames      []string
 	replyOffset chan int
 }
@@ -142,6 +157,9 @@ type createSpinner struct {
 func (s *Spinners) newSpinner(ns createSpinner) {
 	offset := len(s.state)
 	s.state = append(s.state, &spinnerState{
+		ctx:    ns.ctx,
+		cancel: ns.cancel,
+		tick:   (len(s.state) + 1) % len(ns.frames),
 		frames: ns.frames,
 		active: true,
 	})
@@ -156,6 +174,8 @@ func (s *Spinners) newSpinner(ns createSpinner) {
 }
 
 type spinnerState struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
 	tick    int
 	active  bool
 	frames  []string
@@ -171,6 +191,9 @@ func (s *Spinners) MustAddBackground() *Spinner {
 }
 
 func (s *Spinners) Add(ctx context.Context) (*Spinner, error) {
+	// rewrap the context, so that we can cancel the spinner when
+	// we don't want to cancel the parent context.
+	ctx, cancel := context.WithCancel(ctx)
 	replyOffset := make(chan int)
 	defer close(replyOffset)
 	select {
@@ -178,6 +201,7 @@ func (s *Spinners) Add(ctx context.Context) (*Spinner, error) {
 		return nil, ctx.Err()
 	case s.creates <- createSpinner{
 		ctx:         ctx,
+		cancel:      cancel,
 		frames:      SpinnerStyleDocs,
 		replyOffset: replyOffset,
 	}:
@@ -197,10 +221,6 @@ func (s *Spinners) Add(ctx context.Context) (*Spinner, error) {
 	}
 }
 
-func (s *Spinners) Close() {
-	s.cancel()
-}
-
 type Spinner struct {
 	ctx    context.Context
 	parent *Spinners
@@ -208,22 +228,27 @@ type Spinner struct {
 }
 
 func (s *Spinner) monitor() {
+	defer s.Close()
 	for {
 		select {
-		case <-s.ctx.Done():
-			s.Close()
+		case <-s.parent.ctx.Done():
 			return
-		default:
+		case <-s.ctx.Done():
+			return
 		}
 	}
 }
 
 func (s *Spinner) Close() error {
-	select {
-	case <-s.parent.ctx.Done():
-		return s.parent.ctx.Err()
-	case s.parent.stops <- s.offset:
-		return nil
+	for {
+		select {
+		case <-s.parent.ctx.Done():
+			return s.parent.ctx.Err()
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		case s.parent.stops <- s.offset:
+			return nil
+		}
 	}
 }
 
@@ -233,14 +258,21 @@ type updateSpinner struct {
 }
 
 func (s *Spinner) Update(message string) {
-	select {
-	case <-s.ctx.Done():
-		return
-	case <-s.parent.ctx.Done():
-		return
-	case s.parent.updates <- updateSpinner{
-		offset:  s.offset,
-		message: message,
-	}: // ok
+	for {
+		select {
+		case <-s.parent.ctx.Done():
+			return
+		case <-s.ctx.Done():
+			return
+		case s.parent.updates <- updateSpinner{
+			offset:  s.offset,
+			message: message,
+		}: // ok
+			return
+		}
 	}
+}
+
+func (s *Spinner) Updatef(format string, args ...interface{}) {
+	s.Update(fmt.Sprintf(format, args...))
 }
