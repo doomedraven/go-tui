@@ -161,6 +161,7 @@ func (v *view) padded(chunk []byte, lo, mid int) (int, int) {
 	for range pl {
 		line = append(line, ' ')
 	}
+	line = append(line, '\n') // FIXME: windows is \r\n ?..
 	v.lines = append(v.lines, line)
 	mid++
 	lo = mid

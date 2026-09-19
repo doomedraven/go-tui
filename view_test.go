@@ -19,8 +19,8 @@ func TestView(t *testing.T) {
 		{ // explicit NL across lines
 			in: "\x1b[1;31m12345\n67890\x1b[0m",
 			out: []string{
-				"\x1b[1;31m12345     ",
-				"67890\x1b[0m     ",
+				"\x1b[1;31m12345     \n",
+				"67890\x1b[0m     \n",
 			},
 		},
 		{ // only one line
@@ -29,7 +29,7 @@ func TestView(t *testing.T) {
 				"this \x1b[1;31mline\x1b[0m \n",
 				"has escape\n",
 				" sequences\n",
-				".         ",
+				".         \n",
 			},
 		},
 		{ // across lines
@@ -38,7 +38,7 @@ func TestView(t *testing.T) {
 				"this \x1b[1;31mline \n",
 				"has\x1b[0m escape\n",
 				" sequences\n",
-				".         ",
+				".         \n",
 			},
 		},
 		{
@@ -46,11 +46,11 @@ func TestView(t *testing.T) {
 without any escaping characters.`,
 			out: []string{
 				"this line \n",
-				"is        ", // FIXME: bug
+				"is        \n",
 				"without an\n",
 				"y escaping\n",
 				" character\n",
-				"s.        ", // FIXME: bug
+				"s.        \n",
 			},
 		},
 	} {
