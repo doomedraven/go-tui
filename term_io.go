@@ -16,22 +16,39 @@ type descriptor interface {
 }
 
 type termIO struct {
-	io.Reader
-	io.Writer
+	in            io.Reader
+	out           io.Writer
 	Width, Height int
 	Restore       func() error
+
+	cio *chanIO
+	vp  *viewport
 }
 
 var ErrNoTTY = fmt.Errorf("no tty")
 
 func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
-	stderr, ok := out.(descriptor)
-	if !ok {
+	stderr, isOutFD := out.(descriptor)
+	cio, isOutChanIO := out.(*chanIO)
+	if !isOutFD && !isOutChanIO {
 		return nil, fmt.Errorf("stderr: %w", ErrNoTTY)
 	}
 	stdin, ok := in.(descriptor)
 	if !ok {
 		return nil, fmt.Errorf("stdin: %w", ErrNoTTY)
+	}
+	if cio != nil {
+		return &termIO{
+			in:     in,
+			out:    out,
+			Width:  cio.width,
+			Height: -1, // first render will set the height
+			vp:     cio.tail.appendChild(),
+			cio:    cio,
+			Restore: func() error {
+				return nil
+			},
+		}, nil
 	}
 	width, height, err := term.GetSize(int(stderr.Fd()))
 	if err != nil {
@@ -42,14 +59,25 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 		return nil, fmt.Errorf("raw: %w", err)
 	}
 	return &termIO{
-		Reader: in,
-		Writer: out,
+		in:     in,
+		out:    out,
 		Width:  width,
 		Height: height,
 		Restore: func() error {
 			return term.Restore(int(stdin.Fd()), oldState)
 		},
 	}, nil
+}
+
+func (t *termIO) Read(p []byte) (n int, err error) {
+	return t.in.Read(p)
+}
+
+func (t *termIO) Write(p []byte) (n int, err error) {
+	if t.vp != nil {
+		return t.vp.Write(p)
+	}
+	return t.out.Write(p)
 }
 
 func (t *termIO) clear(space int, buf io.Writer) error {

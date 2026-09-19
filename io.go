@@ -49,8 +49,6 @@ func NewIO(ctx context.Context) *chanIO {
 		head:   head,
 		tail:   head,
 	}
-	// fmt.Printf("w:%d, h:%d\n", w, h)
-
 	go cio.forwardTo(os.Stderr)
 	go io.Copy(cio, os.Stdin)
 	return cio
@@ -67,7 +65,12 @@ type chanIO struct {
 	head, tail    *viewport
 }
 
+func (i *chanIO) NewViewport() *viewport {
+	return i.head.appendChild()
+}
+
 func (i *chanIO) forwardTo(w io.Writer) {
+	var prevH, currH int
 	for {
 		select {
 		case <-i.ctx.Done():
@@ -75,22 +78,26 @@ func (i *chanIO) forwardTo(w io.Writer) {
 		case line := <-i.Out:
 			var buf bytes.Buffer
 			i.tail.Write([]byte(line)) // fill buffer
-			space := i.head.combinedHeight()
-			// Move cursor up to the beginning of the dropdown
-			fmt.Fprintf(&buf, "\x1b[%dA", space)
-			// Clear each line
-			for i := 0; i < space; i++ {
-				fmt.Fprint(&buf, "\r")     // return to start of line
-				fmt.Fprint(&buf, "\x1b[K") // clear current line
-				if i < space-1 {
-					fmt.Fprint(&buf, "\x1b[1B") // move cursor down if not last line
+			if prevH > 0 {             // todo: separate thread for flushing all viewports and viewports have to notify it
+				space := i.head.combinedHeight()
+				// Move cursor up to the beginning of the dropdown
+				fmt.Fprintf(&buf, "\x1b[%dA", space)
+				// Clear each line
+				for i := 0; i < space; i++ {
+					fmt.Fprint(&buf, "\r")     // return to start of line
+					fmt.Fprint(&buf, "\x1b[K") // clear current line
+					if i < space-1 {
+						fmt.Fprint(&buf, "\x1b[1B") // move cursor down if not last line
+					}
+				}
+				// Move cursor back up to the beginning and to the start of the line
+				if space > 1 {
+					// space-1 words well for mid scroll, but space-1 is good for screen redraw
+					fmt.Fprintf(&buf, "\x1b[%dA\r", space)
 				}
 			}
-			// Move cursor back up to the beginning and to the start of the line
-			if space > 1 {
-				// -1 words well for mid scroll, but -1 is good for screen redraw
-				fmt.Fprintf(&buf, "\x1b[%dA\r", space-1)
-			}
+			currH = i.head.combinedHeight()
+			prevH = currH
 			i.head.WriteTo(&buf)
 			x := buf.Bytes()
 			w.Write(x[:len(x)-1]) // trim last newline
@@ -117,6 +124,27 @@ func (i *chanIO) Write(p []byte) (n int, err error) {
 	case <-i.ctx.Done():
 		return 0, io.EOF
 	case i.Out <- string(p):
+		return len(p), nil
+	}
+}
+
+func newWriteC(ctx context.Context) *writeC {
+	return &writeC{
+		Context: ctx,
+		C:       make(chan string),
+	}
+}
+
+type writeC struct {
+	context.Context
+	C chan string
+}
+
+func (x *writeC) Write(p []byte) (n int, err error) {
+	select {
+	case <-x.Done():
+		return 0, io.EOF
+	case x.C <- string(p):
 		return len(p), nil
 	}
 }

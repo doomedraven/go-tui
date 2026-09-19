@@ -14,8 +14,19 @@ import (
 
 func main() {
 	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 300*time.Second)
-	w, _ := tui.NewTUI(ctx)
+	ctx, _ = context.WithTimeout(ctx, 30*time.Second)
+	w := tui.NewIO(ctx)
+
+	s, err := tui.NewSpinners(tui.WithOutput(w), tui.WithContext(ctx))
+	if err != nil {
+		panic(err)
+	}
+
+	first := s.MustAddBackground()
+	first.Update("Loading...")
+
+	second := s.MustAddBackground()
+	second.Update("Also loading...")
 
 	// set global logger with custom options
 	slog.SetDefault(slog.New(
@@ -40,5 +51,6 @@ func main() {
 		}
 	}()
 
-	tui.Confirm("Do you agree?", tui.WithOutput(w), tui.WithContext(ctx))
+	// tui.Confirm("Do you agree?", tui.WithOutput(w), tui.WithContext(ctx))
+	time.Sleep(30 * time.Second)
 }

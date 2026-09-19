@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// These two styles are taken from cli-spinners (MIT License)
+// See https://github.com/sindresorhus/cli-spinners/blob/main/spinners.json for more spinner styles
 var DefaultSpinnerStyle = []string{"⠉⠉", "⠈⠙", "⠀⠹", "⠀⢸", "⠀⣰", "⢀⣠", "⣀⣀", "⣄⡀", "⣆⠀", "⡇⠀", "⠏⠀", "⠋⠁"}
 var SpinnerStyleDocs = []string{".  ", ".. ", "...", " ..", "  .", "   "}
 
@@ -43,12 +45,15 @@ func spinnersOpt(o func(s *Spinners) error) opt {
 
 func newSpinners() *Spinners {
 	ctx, cancel := context.WithCancel(context.Background())
+	ticker := time.NewTicker(100 * time.Millisecond)
 	return &Spinners{
 		config: config{
 			ctx: ctx,
 			in:  os.Stdin,
 			out: os.Stdout,
 		},
+		ticker:     ticker,
+		ticks:      ticker.C,
 		cancel:     cancel,
 		makeTermIO: makeTermIO,
 		creates:    make(chan createSpinner),
@@ -69,9 +74,6 @@ func NewSpinners(opt ...opt) (*Spinners, error) {
 	}
 	s.io.Restore() // todo: hack, fix this
 	s.viewport = newViewport(s.io)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	s.ticker = ticker
-	s.ticks = ticker.C
 	go s.start(s.ctx)
 	return s, nil
 }
@@ -90,13 +92,14 @@ func (s *Spinners) start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case ns := <-s.creates:
+			// TODO: write serially in CI mode, as well as when number of spinners
+			// is greater than the height of the terminal
 			s.newSpinner(ns)
 		case update := <-s.updates:
 			s.state[update.offset].Message = update.message
 		case offset := <-s.stops:
 			if offset >= 0 && offset < len(s.state) { // remove spinner at offset
-				// s.io.clear(s.active, frame)
-				s.state[offset] = nil
+				s.state[offset] = nil // TODO: add concept of "done" spinners, that are still snown
 				s.active--
 			}
 		case <-s.ticks:

@@ -30,8 +30,8 @@ func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt)
 		dropdownOpt(func(d *dropdown) error {
 			d.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
 				return &termIO{
-					Reader:  in,
-					Writer:  out,
+					in:      in,
+					out:     out,
 					Width:   width,
 					Height:  height,
 					Restore: func() error { return nil },

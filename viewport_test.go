@@ -72,15 +72,15 @@ without any escaping characters.`,
 func TestViewportLinkedList(t *testing.T) {
 	v := &viewport{
 		height: 2,
-		lines:  [][]byte{[]byte("a"), []byte("b")},
+		lines:  [][]byte{[]byte("a\n"), []byte("b\n")},
 		next: &viewport{
 			height: 2,
-			lines:  [][]byte{[]byte("c"), []byte("d")},
+			lines:  [][]byte{[]byte("c\n"), []byte("d\n")},
 		},
 	}
 	assert.Equal(t, 4, v.numLines())
 
 	var buf bytes.Buffer
 	v.WriteTo(&buf)
-	assert.Equal(t, "a\nb\nc\nd\n", buf.String())
+	assert.Equal(t, "\ra\n\rb\n\rc\n\rd\n", buf.String())
 }

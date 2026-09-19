@@ -63,14 +63,14 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	curr := v
 	for curr != nil {
 		if len(curr.lines) > curr.height {
-			curr.lines = curr.lines[len(curr.lines)-curr.height+1:]
+			curr.lines = curr.lines[len(curr.lines)-curr.height:]
 		}
 		for _, l := range curr.lines {
+			w.Write([]byte{'\r'})
 			b, err := w.Write(l)
 			if err != nil {
 				return total, err
 			}
-			w.Write([]byte{'\n'})
 			total += int64(b) + 1
 		}
 		curr = curr.next

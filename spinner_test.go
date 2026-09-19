@@ -39,10 +39,11 @@ func testIOforSpinners(t *testing.T, width, height int, o ...opt) (*chanIO, func
 			WithOutput(cio),
 			WithContext(ctx),
 			spinnersOpt(func(s *Spinners) error {
+				s.ticks = ticks
 				s.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
 					return &termIO{
-						Reader:  in,
-						Writer:  out,
+						in:      in,
+						out:     out,
 						Width:   width,
 						Height:  height,
 						Restore: func() error { return nil },
@@ -86,7 +87,6 @@ func TestNewSpinners(t *testing.T) {
 
 	tick()
 	assert.Equal(t, "\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\r... second: A\n\r", <-cio.Out)
-	assert.Equal(t, "\x1b[1A\r\x1b[K\r .. second: A\n\r", <-cio.Out)
 
 	s.Close()
 

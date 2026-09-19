@@ -3,10 +3,14 @@
 
 package tui
 
-import "context"
+import (
+	"context"
+	"os"
+)
 
 func NewTUI(ctx context.Context, opts ...opt) (*Tui, error) {
-	tio, err := makeTermIO(defaultIO.Reader, defaultIO.Writer)
+	cio := NewIO(ctx)
+	tio, err := makeTermIO(os.Stdin, cio)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +28,7 @@ type Tui struct {
 }
 
 func (t *Tui) prependView() *viewport {
-	cio, ok := t.termIO.Writer.(*chanIO)
+	cio, ok := t.termIO.out.(*chanIO)
 	if !ok {
 		panic("cannot get view")
 	}
@@ -34,7 +38,7 @@ func (t *Tui) prependView() *viewport {
 }
 
 func (t *Tui) view() *viewport {
-	cio, ok := t.termIO.Writer.(*chanIO)
+	cio, ok := t.termIO.out.(*chanIO)
 	if ok {
 		return cio.head
 	}
