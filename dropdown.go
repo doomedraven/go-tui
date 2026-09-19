@@ -111,10 +111,10 @@ func DropdownIndex(label string, items []any, o ...opt) (int, error) {
 	return i, nil
 }
 
-var DefaultDropdownLabelTemplate = `{{ "?" | green }} {{ . | bold }}`
+var DefaultLabelTemplate = `{{ "?" | green }} {{ . | bold }}`
 var DefaultDropdownActiveItemTemplate = `{{ cyan "→ " . }}`
 var DefaultDropdownInactiveItemTemplate = `{{ dim "→ " . }}`
-var DefaultDropdownMoreItemsTemplate = ` {{ dim "↓ " .More " more … (" .Total " total)" | italic }}`
+var DefaultMoreItemsTemplate = ` {{ dim "↓ " .More " more … (" .Total " total)" | italic }}`
 var DefaultDropdownAnswerTemplate = `{{ dim "✔ " .Label " …" }} {{ .Answer | bold }}`
 
 type dropdownAnswer struct {
@@ -189,10 +189,10 @@ func newDropdown() (*dropdown, error) {
 		Ctx:                  context.Background(),
 		Label:                "Select from list",
 		makeTermIO:           makeTermIO,
-		LabelTemplate:        DefaultDropdownLabelTemplate,
+		LabelTemplate:        DefaultLabelTemplate,
 		ActiveItemTemplate:   DefaultDropdownActiveItemTemplate,
 		InactiveItemTemplate: DefaultDropdownInactiveItemTemplate,
-		MoreItemsTemplate:    DefaultDropdownMoreItemsTemplate,
+		MoreItemsTemplate:    DefaultMoreItemsTemplate,
 		AnswerTemplate:       DefaultDropdownAnswerTemplate,
 	}
 	return d, nil
