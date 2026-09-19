@@ -4,120 +4,242 @@
 package tui
 
 import (
-	"fmt"
-	"sync"
+	"bytes"
+	"context"
+	"io"
+	"os"
 	"time"
 )
 
-type Spinner struct {
-	mu       sync.Mutex
-	line     int
-	message  string
-	frames   []string
-	updates  chan string
-	stopChan chan struct{}
+var DefaultSpinnerStyle = []string{"⠉⠉", "⠈⠙", "⠀⠹", "⠀⢸", "⠀⣰", "⢀⣠", "⣀⣀", "⣄⡀", "⣆⠀", "⡇⠀", "⠏⠀", "⠋⠁"}
+var SpinnerStyleDocs = []string{".  ", ".. ", "...", " ..", "  .", "   "}
+
+type Spinners struct {
+	config
+	cancel   context.CancelFunc
+	viewport *viewport
+	io       *termIO
+
+	creates chan createSpinner
+	updates chan updateSpinner
+	stops   chan int
+	ticker  *time.Ticker
+	ticks   <-chan time.Time
+
+	state      []*spinnerState
+	active     int
+	makeTermIO func(io.Reader, io.Writer) (*termIO, error)
 }
 
-type SpinnerManager struct {
-	mu       sync.Mutex
-	spinners []*Spinner
-	height   int
-}
-
-func NewSpinnerManager() *SpinnerManager {
-	return &SpinnerManager{
-		spinners: make([]*Spinner, 0),
-	}
-}
-
-func (sm *SpinnerManager) AddSpinner(updates chan string) *Spinner {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	s := &Spinner{
-		line:     sm.height,
-		frames:   []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
-		updates:  updates,
-		stopChan: make(chan struct{}),
-	}
-
-	sm.spinners = append(sm.spinners, s)
-	sm.height++
-
-	go s.spin(sm)
-	go s.handleUpdates(sm)
-
-	return s
-}
-
-func (s *Spinner) handleUpdates(sm *SpinnerManager) {
-	for {
-		select {
-		case msg, ok := <-s.updates:
-			if !ok {
-				s.stop(sm)
-				return
-			}
-			s.mu.Lock()
-			s.message = msg
-			s.mu.Unlock()
-		case <-s.stopChan:
-			return
+func spinnersOpt(o func(s *Spinners) error) opt {
+	return func(a any) error {
+		s, ok := a.(*Spinners)
+		if !ok {
+			return nil
 		}
+		return o(s)
 	}
 }
 
-func (s *Spinner) stop(sm *SpinnerManager) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	close(s.stopChan)
-
-	// Remove spinner from the manager
-	for i, spinner := range sm.spinners {
-		if spinner == s {
-			sm.spinners = append(sm.spinners[:i], sm.spinners[i+1:]...)
-			break
-		}
-	}
-
-	// Update lines for remaining spinners
-	for i, spinner := range sm.spinners {
-		spinner.line = i
-	}
-	sm.height--
-
-	// Clear the spinner's line
-	fmt.Printf("\033[%dH\033[K", s.line+1)
-
-	// Move remaining spinners up
-	for _, spinner := range sm.spinners {
-		if spinner.line > s.line {
-			fmt.Printf("\033[%dH%s %s", spinner.line+1, spinner.frames[0], spinner.message)
-		}
+func newSpinners() *Spinners {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Spinners{
+		config: config{
+			ctx: ctx,
+			in:  os.Stdin,
+			out: os.Stdout,
+		},
+		cancel:     cancel,
+		makeTermIO: makeTermIO,
+		creates:    make(chan createSpinner),
+		updates:    make(chan updateSpinner),
+		stops:      make(chan int),
 	}
 }
 
-func (s *Spinner) spin(sm *SpinnerManager) {
+func NewSpinners(opt ...opt) (*Spinners, error) {
+	s := newSpinners()
+	err := opts(opt).Apply(s)
+	if err != nil {
+		return nil, err
+	}
+	s.io, err = s.makeTermIO(s.in, s.out)
+	if err != nil {
+		return nil, err
+	}
+	s.io.Restore() // todo: hack, fix this
+	s.viewport = newViewport(s.io)
 	ticker := time.NewTicker(100 * time.Millisecond)
-	frameIndex := 0
+	s.ticker = ticker
+	s.ticks = ticker.C
+	go s.start(s.ctx)
+	return s, nil
+}
 
+func (s *Spinners) setContext(ctx context.Context) {
+	s.ctx, s.cancel = context.WithCancel(ctx)
+}
+
+func (s *Spinners) start(ctx context.Context) {
+	defer s.stop()
+	frame := bytes.NewBuffer(make([]byte, 2*s.io.Width))
+	frame.Reset()
+	var prevActive, currActive int
 	for {
 		select {
-		case <-ticker.C:
-			s.mu.Lock()
-			frame := s.frames[frameIndex]
-			message := s.message
-			line := s.line
-			s.mu.Unlock()
-
-			// Move cursor to line and clear it
-			fmt.Printf("\033[%dH\033[K%s %s", line+1, frame, message)
-
-			frameIndex = (frameIndex + 1) % len(s.frames)
-		case <-s.stopChan:
-			ticker.Stop()
+		case <-ctx.Done():
 			return
+		case ns := <-s.creates:
+			s.newSpinner(ns)
+		case update := <-s.updates:
+			s.state[update.offset].Message = update.message
+		case offset := <-s.stops:
+			if offset >= 0 && offset < len(s.state) { // remove spinner at offset
+				// s.io.clear(s.active, frame)
+				s.state[offset] = nil
+				s.active--
+			}
+		case <-s.ticks:
+			if prevActive > 0 {
+				s.io.clear(prevActive, frame)
+			}
+			currActive = 0
+			for _, spinner := range s.state {
+				if spinner == nil {
+					continue
+				}
+				spinner.tick = (spinner.tick + 1) % len(spinner.frames)
+				frame.WriteByte('\r')
+				frame.WriteString(spinner.frames[spinner.tick])
+				frame.WriteString(" ")
+				frame.WriteString(spinner.Message)
+				frame.WriteByte('\n')
+				frame.WriteByte('\r')
+				currActive++
+			}
+			prevActive = currActive
+			frame.WriteTo(s.io)
 		}
+	}
+}
+
+func (s *Spinners) stop() {
+	s.io.clear(s.active, s.io)
+	// s.io.Restore()
+	s.ticker.Stop()
+	close(s.creates)
+	close(s.updates)
+	close(s.stops)
+}
+
+type createSpinner struct {
+	ctx         context.Context
+	frames      []string
+	replyOffset chan int
+}
+
+func (s *Spinners) newSpinner(ns createSpinner) {
+	offset := len(s.state)
+	s.state = append(s.state, &spinnerState{
+		frames: ns.frames,
+		active: true,
+	})
+	s.active++
+	select {
+	case <-s.ctx.Done():
+		return
+	case <-ns.ctx.Done():
+		return
+	case ns.replyOffset <- offset:
+	}
+}
+
+type spinnerState struct {
+	tick    int
+	active  bool
+	frames  []string
+	Message string
+}
+
+func (s *Spinners) MustAddBackground() *Spinner {
+	spinner, err := s.Add(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	return spinner
+}
+
+func (s *Spinners) Add(ctx context.Context) (*Spinner, error) {
+	replyOffset := make(chan int)
+	defer close(replyOffset)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case s.creates <- createSpinner{
+		ctx:         ctx,
+		frames:      SpinnerStyleDocs,
+		replyOffset: replyOffset,
+	}:
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case offset := <-replyOffset:
+			// go close in background
+			spinner := &Spinner{
+				ctx:    ctx,
+				parent: s,
+				offset: offset,
+			}
+			go spinner.monitor()
+			return spinner, nil
+		}
+	}
+}
+
+func (s *Spinners) Close() {
+	s.cancel()
+}
+
+type Spinner struct {
+	ctx    context.Context
+	parent *Spinners
+	offset int
+}
+
+func (s *Spinner) monitor() {
+	for {
+		select {
+		case <-s.ctx.Done():
+			s.Close()
+			return
+		default:
+		}
+	}
+}
+
+func (s *Spinner) Close() error {
+	select {
+	case <-s.parent.ctx.Done():
+		return s.parent.ctx.Err()
+	case s.parent.stops <- s.offset:
+		return nil
+	}
+}
+
+type updateSpinner struct {
+	offset  int
+	message string
+}
+
+func (s *Spinner) Update(message string) {
+	select {
+	case <-s.ctx.Done():
+		return
+	case <-s.parent.ctx.Done():
+		return
+	case s.parent.updates <- updateSpinner{
+		offset:  s.offset,
+		message: message,
+	}: // ok
 	}
 }

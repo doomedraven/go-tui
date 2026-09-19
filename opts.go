@@ -87,3 +87,29 @@ func WithTimeout(timeout time.Duration) opt {
 		return nil
 	}
 }
+
+type config struct {
+	ctx context.Context
+	in  io.Reader
+	out io.Writer
+}
+
+// implement [withContext] interface
+func (c *config) setContext(ctx context.Context) {
+	c.ctx = ctx
+}
+
+// implement [withContext] interface
+func (c *config) getContext() context.Context {
+	return c.ctx
+}
+
+// implement [withIO] interface
+func (c *config) setReader(r io.Reader) {
+	c.in = r
+}
+
+// implement [withIO] interface
+func (c *config) setWriter(w io.Writer) {
+	c.out = w
+}

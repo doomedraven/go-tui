@@ -37,6 +37,17 @@ func deepEqual(expected, actual any) (want, got any, ok bool) {
 	return expected, actual, res
 }
 
+// NotNil asserts that the value is not nil.
+func NotNil(t *testing.T, value any) {
+	t.Helper()
+
+	if reflect.ValueOf(value).IsNil() {
+		_, file, line, _ := runtime.Caller(1)
+
+		t.Fatalf("%s:%d: expected not nil, got nil", file, line)
+	}
+}
+
 // True asserts that the value is true.
 func True(t *testing.T, value bool) { //nolint:revive // ignore
 	t.Helper()

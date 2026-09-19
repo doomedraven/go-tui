@@ -11,7 +11,7 @@ import (
 	"github.com/nfx/go-tui/internal/assert"
 )
 
-func testIO(t *testing.T, width, height int, o ...opt) (*chanIO, opt) {
+func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cio := &chanIO{
 		ctx: ctx,
@@ -49,7 +49,7 @@ func testIO(t *testing.T, width, height int, o ...opt) (*chanIO, opt) {
 }
 
 func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
-	cio, opts := testIO(t, 80, 120)
+	cio, opts := testIOforDropdown(t, 80, 120)
 	result = make(chan bool)
 	go func() {
 		defer close(result)
@@ -100,7 +100,7 @@ func TestDownAndUpCase(t *testing.T) {
 }
 
 func overflowForTest(t *testing.T) (in, out chan string, result chan string) {
-	cio, opts := testIO(t, 12, 4)
+	cio, opts := testIOforDropdown(t, 12, 4)
 	result = make(chan string)
 	go func() {
 		defer close(result)
@@ -164,7 +164,7 @@ func TestMoreItemsUp(t *testing.T) {
 }
 
 func otherDropdownForTest(t *testing.T) (in, out chan string, result chan string) {
-	cio, opts := testIO(t, 12, 4)
+	cio, opts := testIOforDropdown(t, 12, 4)
 	result = make(chan string)
 	go func() {
 		defer close(result)
