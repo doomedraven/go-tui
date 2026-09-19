@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -53,7 +52,7 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 	}, nil
 }
 
-func (t *termIO) clear(space int, buf *bytes.Buffer) error {
+func (t *termIO) clear(space int, buf io.Writer) error {
 	// use buffer to write to io only once
 	// Move cursor up to the beginning of the dropdown
 	fmt.Fprintf(buf, "\x1b[%dA", space)

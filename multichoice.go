@@ -59,7 +59,7 @@ func newMultichoice() *multichoice {
 }
 
 // render displays the dropdown
-func (m *multichoice) render(io *termIO, buf *bytes.Buffer) error {
+func (m *multichoice) render(io *termIO, buf *viewport) error {
 	// use buffer to write to io only once
 	var prefix int
 	var err error
@@ -153,8 +153,7 @@ func (m *multichoice) run() error {
 	if io.Height < 3 {
 		return ErrNoSpace
 	}
-	frame := bytes.NewBuffer(make([]byte, io.Height/2*io.Width))
-	frame.Reset()
+	frame := newViewport(io)
 	var typed []rune
 	for {
 		err = m.render(io, frame)
@@ -163,7 +162,8 @@ func (m *multichoice) run() error {
 		}
 		frame.WriteTo(io)
 		displayed := len(m.displayed)
-		space := max(displayed, io.Height/2+2)
+		space := frame.numLines()
+		frame.height = space
 		select {
 		case <-m.Ctx.Done():
 			io.clear(space, frame)

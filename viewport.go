@@ -22,6 +22,13 @@ func NewViewport(w, h int) *viewport {
 	}
 }
 
+func newViewport(io *termIO) *viewport {
+	return &viewport{
+		width:  io.Width,
+		height: io.Height,
+	}
+}
+
 func (v *viewport) appendChild() *viewport {
 	c := &viewport{
 		width:  v.width,
@@ -89,6 +96,11 @@ func (v *viewport) padded(chunk []byte, lo, mid int) (int, int) {
 	mid++
 	lo = mid
 	return lo, mid
+}
+
+func (v *viewport) WriteByte(b byte) error {
+	_, err := v.Write([]byte{b})
+	return err
 }
 
 // see https://notes.burke.libbey.me/ansi-escape-codes/
