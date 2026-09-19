@@ -18,9 +18,8 @@ var SpinnerStyleDocs = []string{".  ", ".. ", "...", " ..", "  .", "   "}
 
 type Spinners struct {
 	config
-	cancel   context.CancelFunc
-	viewport *viewport
-	io       *termIO
+	cancel context.CancelFunc
+	io     *termIO
 
 	creates chan createSpinner
 	updates chan updateSpinner
@@ -73,7 +72,6 @@ func NewSpinners(opt ...opt) (*Spinners, error) {
 		return nil, err
 	}
 	s.io.Restore() // todo: hack, fix this
-	s.viewport = newViewport(s.io)
 	go s.start(s.ctx)
 	return s, nil
 }

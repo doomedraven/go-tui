@@ -34,23 +34,25 @@ var defaultIO = &tio{
 	Writer: os.Stderr,
 }
 
-func NewIO(ctx context.Context) *chanIO {
-	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
-	head := &viewport{
-		width:  w,
-		height: h,
-	}
+func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 	cio := &chanIO{
 		ctx:    ctx,
 		In:     make(chan string),
 		Out:    make(chan string),
-		width:  w,
-		height: h,
-		head:   head,
-		tail:   head,
+		notify: make(chan viewportChanged, 1), // buffered to avoid blocking
+		width:  width,
+		height: height,
 	}
+	cio.head = initViewport(cio.ctx, cio.notify, cio.width, cio.height)
+	cio.tail = cio.head
+	return cio
+}
+
+func NewIO(ctx context.Context) *chanIO {
+	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
+	cio := newUnstartedIO(ctx, w, h)
 	go cio.forwardTo(os.Stderr)
-	go io.Copy(cio, os.Stdin)
+	// go io.Copy(cio, os.Stdin) // FIXME: stdin forwarding is not working
 	return cio
 }
 
@@ -63,10 +65,16 @@ type chanIO struct {
 
 	width, height int
 	head, tail    *viewport
+	notify        chan viewportChanged
 }
 
-func (i *chanIO) NewViewport() *viewport {
-	return i.head.appendChild()
+func (i *chanIO) pushViewport() *viewport {
+	prev := i.head
+	// TODO: height is not really relevant anymore?..
+	i.head = initViewport(i.ctx, i.notify, i.width, i.height)
+	i.head.fixedHeight = true
+	i.head.next = prev
+	return i.head
 }
 
 func (i *chanIO) forwardTo(w io.Writer) {
@@ -76,10 +84,11 @@ func (i *chanIO) forwardTo(w io.Writer) {
 		case <-i.ctx.Done():
 			return
 		case line := <-i.Out:
-			var buf bytes.Buffer
 			i.tail.Write([]byte(line)) // fill buffer
-			if prevH > 0 {             // todo: separate thread for flushing all viewports and viewports have to notify it
-				space := i.head.combinedHeight()
+		case <-i.notify:
+			var buf bytes.Buffer
+			if prevH > 0 { // todo: separate thread for flushing all viewports and viewports have to notify it
+				space := prevH
 				// Move cursor up to the beginning of the dropdown
 				fmt.Fprintf(&buf, "\x1b[%dA", space)
 				// Clear each line

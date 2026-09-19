@@ -15,19 +15,7 @@ import (
 func chainIOforTest(t *testing.T, width, height int) (*chanIO, *writeC) {
 	ctx, cancel := context.WithCancel(context.Background())
 	realOut := newWriteC(ctx)
-	vp := &viewport{
-		width:  width,
-		height: height,
-	}
-	cio := &chanIO{
-		ctx:    ctx,
-		In:     make(chan string),
-		Out:    make(chan string),
-		head:   vp,
-		tail:   vp,
-		width:  width,
-		height: height,
-	}
+	cio := newUnstartedIO(ctx, width, height)
 	go cio.forwardTo(realOut)
 	t.Cleanup(func() {
 		cancel()

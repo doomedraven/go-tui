@@ -153,7 +153,8 @@ func (m *multichoice) run() error {
 	if io.Height < 3 {
 		return ErrNoSpace
 	}
-	frame := newViewport(io)
+	// TODO: unfinished
+	frame := initViewport(m.Ctx, make(chan viewportChanged), io.Width, io.Height)
 	var typed []rune
 	for {
 		err = m.render(io, frame)

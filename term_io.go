@@ -43,7 +43,7 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 			out:    out,
 			Width:  cio.width,
 			Height: -1, // first render will set the height
-			vp:     cio.tail.appendChild(),
+			vp:     cio.pushViewport(),
 			cio:    cio,
 			Restore: func() error {
 				return nil
@@ -81,6 +81,9 @@ func (t *termIO) Write(p []byte) (n int, err error) {
 }
 
 func (t *termIO) clear(space int, buf io.Writer) error {
+	if t.vp != nil {
+		return nil // screen clearing is handled by [chanIO.forwardTo]
+	}
 	// use buffer to write to io only once
 	// Move cursor up to the beginning of the dropdown
 	fmt.Fprintf(buf, "\x1b[%dA", space)

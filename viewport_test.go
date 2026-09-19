@@ -59,7 +59,7 @@ without any escaping characters.`,
 				width:  10,
 				height: 10,
 			}
-			v.Write([]byte(tt.in))
+			v.appendToLinebuffer([]byte(tt.in))
 			var lines []string
 			for _, line := range v.lines {
 				lines = append(lines, string(line))
@@ -71,7 +71,7 @@ without any escaping characters.`,
 
 func TestViewportLinkedList(t *testing.T) {
 	v := &viewport{
-		height: 2,
+		height: 4,
 		lines:  [][]byte{[]byte("a\n"), []byte("b\n")},
 		next: &viewport{
 			height: 2,

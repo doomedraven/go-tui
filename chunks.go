@@ -11,6 +11,7 @@ func isEscapeStart(r byte) bool {
 	return r == '\x1b' || r == '\x9b'
 }
 
+// see https://github.com/rivo/uniseg for a more complete implementation
 func width(chunk []byte) int {
 	lo, hi, w := 0, len(chunk), 0
 	var escape bool
