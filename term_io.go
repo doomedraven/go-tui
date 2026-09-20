@@ -85,6 +85,9 @@ func (t *termIO) Write(p []byte) (n int, err error) {
 
 func (t *termIO) clear(space int, buf io.Writer) error {
 	if t.vp != nil {
+		if t.vp.fixedHeight {
+			return t.vp.WriteByte('\r')
+		}
 		return nil // screen clearing is handled by [chanIO.forwardTo]
 	}
 	// use buffer to write to io only once

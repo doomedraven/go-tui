@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -20,6 +21,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	var wg sync.WaitGroup
+	for i := range 5 {
+		wg.Add(1)
+		go func(j int) {
+			defer wg.Done()
+			local := s.MustAddBackground(tui.WithPrefixf("spinner %d", j))
+			defer local.Close()
+			for k := range 10 {
+				local.Updatef("task %d", k)
+				time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond)
+			}
+			local.Update("Done")
+		}(i)
+	}
+	wg.Wait()
 
 	first := s.MustAddBackground()
 	first.Update("Loading...")
@@ -60,9 +77,9 @@ func main() {
 					}
 					third.Updatef("New spinner for counter: %d", counter)
 				}
-				// if counter == 30 { // FIXME: there's "panic: send on closed channel"
-				// 	s.Close()
-				// }
+				if counter == 30 {
+					s.Close()
+				}
 				if counter == 50 {
 					done <- struct{}{}
 				}
@@ -71,7 +88,7 @@ func main() {
 		}
 	}()
 
-	tui.Confirm("Do you want to continue?", tui.WithOutput(w), tui.WithContext(ctx))
+	// tui.Confirm("Do you want to continue?", tui.WithOutput(w), tui.WithContext(ctx))
 
 	<-done
 }

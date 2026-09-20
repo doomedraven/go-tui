@@ -69,7 +69,7 @@ type chanIO struct {
 }
 
 func (i *chanIO) pushViewport() *viewport {
-	prev := i.head
+	prev := i.head // TODO: data race
 	// TODO: height is not really relevant anymore?..
 	i.head = initViewport(i.ctx, i.notify, i.width, i.height)
 	i.head.fixedHeight = true
@@ -83,7 +83,7 @@ func (i *chanIO) forwardTo(w io.Writer) {
 		select {
 		case <-i.ctx.Done():
 			return
-		case line := <-i.Out:
+		case line := <-i.Out: // deadlocks here
 			i.tail.Write([]byte(line)) // fill buffer
 		case <-i.notify:
 			var buf bytes.Buffer
@@ -129,6 +129,11 @@ func (i *chanIO) Read(p []byte) (n int, err error) {
 }
 
 func (i *chanIO) Write(p []byte) (n int, err error) {
+	select { // don't send on a closed channel
+	case <-i.ctx.Done():
+		return 0, io.EOF
+	default:
+	}
 	select {
 	case <-i.ctx.Done():
 		return 0, io.EOF

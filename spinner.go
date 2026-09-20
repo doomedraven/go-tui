@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
+
+	"log/slog"
 )
 
 // These two styles are taken from cli-spinners (MIT License)
@@ -23,13 +26,14 @@ type Spinners struct {
 	io     *termIO
 
 	creates chan createSpinner
-	updates chan updateSpinner
+	updates chan updateOffset
 	stops   chan int
+	wg      sync.WaitGroup
 	ticker  *time.Ticker
 	ticks   <-chan time.Time
 
 	state      []*spinnerState
-	active     int
+	displayed  int
 	makeTermIO func(io.Reader, io.Writer) (*termIO, error)
 }
 
@@ -57,7 +61,7 @@ func newSpinners() *Spinners {
 		cancel:     cancel,
 		makeTermIO: makeTermIO,
 		creates:    make(chan createSpinner),
-		updates:    make(chan updateSpinner),
+		updates:    make(chan updateOffset),
 		stops:      make(chan int),
 	}
 }
@@ -82,10 +86,8 @@ func (s *Spinners) setContext(ctx context.Context) {
 }
 
 func (s *Spinners) start(ctx context.Context) {
-	defer s.stop()
-	frame := bytes.NewBuffer(make([]byte, 2*s.io.Width))
-	frame.Reset()
-	var prevActive, currActive int
+	// defer s.stop()
+	var prevActive int
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,45 +95,129 @@ func (s *Spinners) start(ctx context.Context) {
 				if spinner == nil {
 					continue
 				}
+				slog.Debug("cancelling spinner")
 				spinner.cancel()
+				s.wg.Done()
 			}
+			s.stop()
 			return
 		case ns := <-s.creates:
 			// TODO: write serially in CI mode, as well as when number of spinners
 			// is greater than the height of the terminal
 			s.newSpinner(ns)
+			s.wg.Add(1)
 		case update := <-s.updates:
-			if s.state[update.offset] == nil {
-				continue // it's already stopped and we don't care
-			}
-			s.state[update.offset].Message = update.message
+			s.updateSpinner(update)
 		case offset := <-s.stops:
-			if offset >= 0 && offset < len(s.state) { // remove spinner at offset
-				s.state[offset] = nil // TODO: add concept of "done" spinners, that are still snown
-				s.active--
-			}
+			s.stopSpinner(offset)
 		case <-s.ticks:
-			if prevActive > 0 {
-				s.io.clear(prevActive, frame)
-			}
-			currActive = 0
-			for _, spinner := range s.state {
-				if spinner == nil {
-					continue
-				}
-				spinner.tick = (spinner.tick + 1) % len(spinner.frames)
-				frame.WriteByte('\r')
-				frame.WriteString(spinner.frames[spinner.tick])
-				frame.WriteString(" ")
-				frame.WriteString(spinner.Message)
-				frame.WriteByte('\n')
-				frame.WriteByte('\r')
-				currActive++
-			}
-			prevActive = currActive
-			frame.WriteTo(s.io)
+			prevActive = s.redraw(prevActive)
 		}
 	}
+}
+
+// updateOffset is a concurrent client for [Spinners.updateSpinner]
+func (s *Spinners) updateOffset(offset int, message string, err error) {
+	select {
+	case <-s.ctx.Done():
+		return // return early if stopped already
+	default: // and don't block if it isn't
+	}
+	select {
+	case <-s.ctx.Done():
+		return // return early while stopping
+	case s.updates <- updateOffset{
+		offset:  offset,
+		message: message,
+		err:     err,
+	}: // ok
+		return
+	}
+}
+
+type updateOffset struct {
+	offset  int
+	message string
+	err     error
+}
+
+// updateSpinner is a serial handler for [Spinners.updateOffset]
+func (s *Spinners) updateSpinner(update updateOffset) {
+	if s.state[update.offset] == nil {
+		return // it's already stopped and we don't care
+	}
+	if update.err != nil {
+		update.message = update.err.Error()
+		s.state[update.offset].Failed = true
+	}
+	s.state[update.offset].Message = update.message
+}
+
+// concurrent client for [Spinners.stopSpinner]
+func (s *Spinners) stopOffset(offset int) error {
+	// select statement is selecting cases semi-randomly, so we need to check for context first,
+	// otherwise we might end up sending to a closed channel.
+	select {
+	case <-s.ctx.Done():
+		return s.ctx.Err()
+	default: // default case is executed if no other case is ready
+	}
+	select {
+	case <-s.ctx.Done():
+		return s.ctx.Err()
+	case s.stops <- offset:
+		return nil
+	}
+}
+
+// stopSpinner is a serial handler for [Spinners.stopOffset]
+func (s *Spinners) stopSpinner(offset int) {
+	if offset >= 0 && offset < len(s.state) {
+		if s.state[offset] == nil {
+			return // very unlikely, but just in case
+		}
+		s.wg.Done()
+		s.state[offset].Done = true
+		if s.state[offset].Failed {
+			return // user needs to see the error message
+		}
+		if s.state[offset].keep {
+			return // don't remove the spinner if it's supposed to be kept
+		}
+		// remove spinner at offset
+		s.state[offset] = nil
+		s.displayed--
+	}
+}
+
+func (s *Spinners) redraw(prevActive int) int {
+	frame := bytes.NewBuffer(make([]byte, 2*s.io.Width))
+	frame.Reset()
+	if prevActive > 0 {
+		s.io.clear(prevActive, frame)
+	}
+	currActive := 0
+	// TODO: technically, we can also add a tree of spinners
+	for _, spinner := range s.state {
+		if spinner == nil {
+			continue
+		}
+		spinner.next()
+		frame.WriteByte('\r')
+		frame.WriteString(spinner.frames[spinner.tick])
+		frame.WriteString(" ")
+		if spinner.Prefix != "" {
+			frame.WriteString(spinner.Prefix)
+			frame.WriteString(": ")
+		}
+		frame.WriteString(spinner.Message)
+		frame.WriteByte('\n')
+		frame.WriteByte('\r')
+		currActive++
+	}
+	prevActive = currActive
+	frame.WriteTo(s.io)
+	return currActive
 }
 
 func (s *Spinners) Close() {
@@ -139,7 +225,8 @@ func (s *Spinners) Close() {
 }
 
 func (s *Spinners) stop() {
-	s.io.clear(s.active, s.io)
+	// s.wg.Wait()
+	s.io.clear(s.displayed, s.io)
 	// s.io.Restore()
 	s.ticker.Stop()
 	close(s.creates)
@@ -148,131 +235,160 @@ func (s *Spinners) stop() {
 }
 
 type createSpinner struct {
-	ctx         context.Context
 	cancel      context.CancelFunc
 	frames      []string
 	replyOffset chan int
+	prefix      string
+	keep        bool
 }
 
 func (s *Spinners) newSpinner(ns createSpinner) {
 	offset := len(s.state)
 	s.state = append(s.state, &spinnerState{
-		ctx:    ns.ctx,
 		cancel: ns.cancel,
+		Prefix: ns.prefix,
 		tick:   (len(s.state) + 1) % len(ns.frames),
 		frames: ns.frames,
 		active: true,
+		keep:   ns.keep,
 	})
-	s.active++
+	s.displayed++
 	select {
 	case <-s.ctx.Done():
-		return
-	case <-ns.ctx.Done():
 		return
 	case ns.replyOffset <- offset:
 	}
 }
 
 type spinnerState struct {
-	ctx     context.Context
 	cancel  context.CancelFunc
 	tick    int
 	active  bool
+	keep    bool
 	frames  []string
+	Prefix  string
 	Message string
+	Failed  bool
+	Done    bool
 }
 
-func (s *Spinners) MustAddBackground() *Spinner {
-	spinner, err := s.Add(context.Background())
+func (ss *spinnerState) next() {
+	ss.tick = (ss.tick + 1) % len(ss.frames)
+}
+
+func (s *Spinners) MustAddBackground(opt ...opt) *Spinner {
+	spinner, err := s.Add(context.Background(), opt...)
 	if err != nil {
 		panic(err)
 	}
 	return spinner
 }
 
-func (s *Spinners) Add(ctx context.Context) (*Spinner, error) {
+func WithPrefixf(prefix string, args ...any) opt {
+	// TODO: decide if we expose text/template or fmt. This is a bit of a mess
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.prefix = fmt.Sprintf(prefix, args...)
+		return nil
+	}
+}
+
+// WithKeep will keep the spinner displayed after it's done
+func WithKeep() opt {
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.keep = true
+		return nil
+	}
+}
+
+func WithFrames(frames []string) opt {
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.frames = frames
+		return nil
+	}
+}
+
+func (s *Spinners) Add(ctx context.Context, opt ...opt) (*Spinner, error) {
 	// rewrap the context, so that we can cancel the spinner when
 	// we don't want to cancel the parent context.
 	ctx, cancel := context.WithCancel(ctx)
 	replyOffset := make(chan int)
-	defer close(replyOffset)
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case s.creates <- createSpinner{
-		ctx:         ctx,
+	req := createSpinner{
 		cancel:      cancel,
 		frames:      SpinnerStyleDocs,
 		replyOffset: replyOffset,
-	}:
+	}
+	err := opts(opt).Apply(&req)
+	if err != nil {
+		return nil, err
+	}
+	defer close(replyOffset)
+	// when parent context is done, we can't create a spinner
+	select {
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case s.creates <- req:
 		select {
-		case <-ctx.Done():
+		case <-s.ctx.Done(): // spinner group is done
+			return nil, s.ctx.Err()
+		case <-ctx.Done(): // what created this spinner is done
 			return nil, ctx.Err()
 		case offset := <-replyOffset:
 			// go close in background
 			spinner := &Spinner{
-				ctx:    ctx,
 				parent: s,
 				offset: offset,
 			}
-			go spinner.monitor()
+			go spinner.monitor(ctx)
 			return spinner, nil
 		}
 	}
 }
 
 type Spinner struct {
-	ctx    context.Context
 	parent *Spinners
 	offset int
 }
 
-func (s *Spinner) monitor() {
-	defer s.Close()
-	for {
-		select {
-		case <-s.parent.ctx.Done():
-			return
-		case <-s.ctx.Done():
-			return
-		}
+func (s *Spinner) monitor(ctx context.Context) {
+	defer s.Close() // we send the stop to the parent with the offset
+	select {        // whether parent or self context is done
+	case <-s.parent.ctx.Done():
+		return // all spinners are done
+	case <-ctx.Done():
+		return // what created spinner is done
 	}
 }
 
-func (s *Spinner) Close() error {
-	for {
-		select {
-		case <-s.parent.ctx.Done():
-			return s.parent.ctx.Err()
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		case s.parent.stops <- s.offset:
-			return nil
-		}
-	}
+// Close will stop the spinner and remove it from display if it's not kept
+func (s *Spinner) Close() error { // TODO: what about s.cancel?..
+	return s.parent.stopOffset(s.offset)
 }
 
-type updateSpinner struct {
-	offset  int
-	message string
-}
-
+// Update will update the spinner with a new message
 func (s *Spinner) Update(message string) {
-	for {
-		select {
-		case <-s.parent.ctx.Done():
-			return
-		case <-s.ctx.Done():
-			return
-		case s.parent.updates <- updateSpinner{
-			offset:  s.offset,
-			message: message,
-		}: // ok
-			return
-		}
-	}
+	s.parent.updateOffset(s.offset, message, nil)
 }
 
-func (s *Spinner) Updatef(format string, args ...interface{}) {
-	s.Update(fmt.Sprintf(format, args...))
+// Updatef will update the spinner with a formatted message
+func (s *Spinner) Updatef(format string, args ...any) {
+	s.parent.updateOffset(s.offset, fmt.Sprintf(format, args...), nil)
+}
+
+// Fail will stop the spinner and display an error message
+func (s *Spinner) Fail(err error) {
+	s.parent.updateOffset(s.offset, "", err)
 }

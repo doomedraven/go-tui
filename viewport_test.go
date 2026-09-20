@@ -5,6 +5,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 
@@ -70,14 +71,12 @@ without any escaping characters.`,
 }
 
 func TestViewportLinkedList(t *testing.T) {
-	v := &viewport{
-		height: 4,
-		lines:  [][]byte{[]byte("a\n"), []byte("b\n")},
-		next: &viewport{
-			height: 2,
-			lines:  [][]byte{[]byte("c\n"), []byte("d\n")},
-		},
-	}
+	ctx := context.Background()
+	notify := make(chan viewportChanged)
+	v := initViewport(ctx, notify, 10, 4)
+	v.lines = [][]byte{[]byte("a\n"), []byte("b\n")}
+	v.next = initViewport(ctx, notify, 10, 2)
+	v.next.lines = [][]byte{[]byte("c\n"), []byte("d\n")}
 	assert.Equal(t, 4, v.numLines())
 
 	var buf bytes.Buffer
@@ -86,15 +85,14 @@ func TestViewportLinkedList(t *testing.T) {
 }
 
 func TestWriteToRotated(t *testing.T) {
-	v := &viewport{
-		height:      5,
-		fixedHeight: true,
-		lastLines:   2,
-		lines:       [][]byte{[]byte("a\n"), []byte("b\n"), []byte("aa\n"), []byte("bb\n")},
-		next: &viewport{
-			lines: [][]byte{[]byte("c\n"), []byte("d\n"), []byte("e\n"), []byte("f\n"), []byte("g\n")},
-		},
-	}
+	ctx := context.Background()
+	notify := make(chan viewportChanged)
+	v := initViewport(ctx, notify, 10, 5)
+	v.fixedHeight = true
+	v.lastLines = 2
+	v.lines = [][]byte{[]byte("a\n"), []byte("b\n"), []byte("aa\n"), []byte("bb\n")}
+	v.next = initViewport(ctx, notify, 10, 5)
+	v.next.lines = [][]byte{[]byte("c\n"), []byte("d\n"), []byte("e\n"), []byte("f\n"), []byte("g\n")}
 	var buf bytes.Buffer
 	v.WriteTo(&buf)
 	assert.Equal(t, "\raa\n\rbb\n\re\n\rf\n\rg\n", buf.String())

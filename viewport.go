@@ -6,18 +6,28 @@ package tui
 import (
 	"context"
 	"io"
-	"sync"
 )
 
 type viewportChanged int
+
+type writeToResponse struct {
+	bytes int64
+	lines int
+	err   error
+}
+
+type writeTo struct {
+	io.Writer
+	res chan writeToResponse
+}
 
 type viewport struct {
 	width, height int
 	lines         [][]byte
 	next          *viewport
-	mu            sync.Mutex
 	inner         chan []byte
 	notify        chan viewportChanged
+	writeTos      chan *writeTo
 	ctx           context.Context
 	fixedHeight   bool
 	lastLines     int
@@ -25,11 +35,12 @@ type viewport struct {
 
 func initViewport(ctx context.Context, notify chan viewportChanged, width, height int) *viewport {
 	v := &viewport{
-		ctx:    ctx,
-		inner:  make(chan []byte),
-		notify: notify,
-		width:  width,
-		height: height,
+		ctx:      ctx,
+		inner:    make(chan []byte),
+		writeTos: make(chan *writeTo),
+		notify:   notify,
+		width:    width,
+		height:   height,
 	}
 	go v.loop()
 	return v
@@ -60,32 +71,59 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	curr := v
 	budget := v.height
 	for curr != nil {
-		if curr.fixedHeight && curr.lastLines > 0 {
-			curr.lines = curr.lines[len(curr.lines)-curr.lastLines:]
-		} else if len(curr.lines) > curr.height {
-			// FIXME: race condition and potential data corruption
-			// TODO: definitely need two offsets, as the top fixed viewport will be the first to be trimmed
-			curr.lines = curr.lines[len(curr.lines)-curr.height:]
-		}
-		for _, l := range curr.lines {
-			w.Write([]byte{'\r'})
-			b, err := w.Write(l)
-			if err != nil {
-				return total, err
+		respond := make(chan writeToResponse)
+		select {
+		case <-curr.ctx.Done():
+			return total, io.EOF
+		case curr.writeTos <- &writeTo{Writer: w, res: respond}:
+			select {
+			case <-curr.ctx.Done():
+				return total, io.EOF
+			case res := <-respond:
+				if res.err != nil {
+					return total, res.err
+				}
+				total += res.bytes
+				budget -= res.lines
+				if budget <= 0 {
+					return total, nil
+				}
+				curr = curr.next
+				if curr != nil {
+					// simplified assumption: tail viewport cannot have fixed height
+					curr.height = budget
+				}
 			}
-			total += int64(b) + 1
-		}
-		budget -= len(curr.lines)
-		if budget <= 0 {
-			break
-		}
-		curr = curr.next
-		if curr != nil {
-			// simplified assumption: tail viewport cannot have fixed height
-			curr.height = budget
 		}
 	}
 	return total, nil
+}
+
+// writeTo writes the viewport to the given writer, called from [viewport.loop], which
+// confines all mutability to a single goroutine.
+func (v *viewport) writeTo(w io.Writer) (int64, int, error) {
+	if v.fixedHeight {
+		if v.lastLines == 0 {
+			v.lines = [][]byte{}
+		} else {
+			v.lines = v.lines[len(v.lines)-v.lastLines:]
+		}
+	} else if len(v.lines) > v.height {
+		// TODO: definitely need two offsets, as the top fixed viewport will be the first to be trimmed
+		v.lines = v.lines[len(v.lines)-v.height:]
+	}
+	var lines int
+	var bytes int64
+	for _, l := range v.lines {
+		w.Write([]byte{'\r'})
+		b, err := w.Write(l)
+		if err != nil {
+			return bytes, lines, err
+		}
+		bytes += int64(b) + 1
+		lines++
+	}
+	return bytes, lines, nil
 }
 
 func (v *viewport) padded(chunk []byte, lo, mid int) (int, int) {
@@ -177,6 +215,13 @@ func (v *viewport) loop() {
 			case <-v.ctx.Done():
 				return
 			case v.notify <- viewportChanged(v.lastLines):
+			}
+		case w := <-v.writeTos:
+			bytes, lines, err := v.writeTo(w)
+			select {
+			case <-v.ctx.Done():
+				return
+			case w.res <- writeToResponse{bytes, lines, err}:
 			}
 		}
 	}
