@@ -40,7 +40,10 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 		return nil, fmt.Errorf("stdin: %w", ErrNoTTY)
 	}
 	if cio != nil {
-		vp := cio.pushViewport()
+		vp, err := cio.pushViewport()
+		if err != nil {
+			return nil, fmt.Errorf("viewport: %w", err)
+		}
 		return &termIO{
 			in:     in,
 			out:    out,

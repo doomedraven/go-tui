@@ -16,7 +16,8 @@ func chainIOforTest(t *testing.T, width, height int) (*chanIO, *writeC) {
 	ctx, cancel := context.WithCancel(context.Background())
 	realOut := newWriteC(ctx)
 	cio := newUnstartedIO(ctx, width, height)
-	go cio.forwardTo(realOut)
+	go cio.handleViewports(ctx)
+	go cio.forwardTo(ctx, realOut)
 	t.Cleanup(func() {
 		cancel()
 		close(cio.In)

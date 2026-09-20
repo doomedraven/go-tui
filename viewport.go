@@ -75,11 +75,14 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 		select {
 		case <-curr.ctx.Done():
 			return total, io.EOF
+		// [viewport.loop] will handle the write
 		case curr.writeTos <- &writeTo{Writer: w, res: respond}:
 			select {
 			case <-curr.ctx.Done():
 				return total, io.EOF
+			// [viewport.loop] will handle the response
 			case res := <-respond:
+				close(respond)
 				if res.err != nil {
 					return total, res.err
 				}
@@ -157,6 +160,7 @@ func (v *viewport) Write(chunk []byte) (n int, err error) {
 	select {
 	case <-v.ctx.Done():
 		return 0, io.EOF
+	// [viewport.loop] will handle the write
 	case v.inner <- chunk:
 		return len(chunk), nil
 	}
@@ -209,18 +213,22 @@ func (v *viewport) loop() {
 		select {
 		case <-v.ctx.Done():
 			return
+		// from [viewport.Write]
 		case chunk := <-v.inner:
 			v.lastLines = v.appendToLinebuffer(chunk)
 			select {
 			case <-v.ctx.Done():
 				return
+			// notify is handled by [chanIO.forwardTo]
 			case v.notify <- viewportChanged(v.lastLines):
 			}
+		// handled by [viewport.WriteTo]
 		case w := <-v.writeTos:
 			bytes, lines, err := v.writeTo(w)
 			select {
 			case <-v.ctx.Done():
 				return
+			// handled by [viewport.WriteTo]
 			case w.res <- writeToResponse{bytes, lines, err}:
 			}
 		}

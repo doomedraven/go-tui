@@ -39,7 +39,8 @@ func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 		ctx:    ctx,
 		In:     make(chan string),
 		Out:    make(chan string),
-		notify: make(chan viewportChanged, 1), // buffered to avoid blocking
+		vreply: make(chan chan *viewport),
+		notify: make(chan viewportChanged, 1024), // buffered to avoid blocking
 		width:  width,
 		height: height,
 	}
@@ -51,7 +52,8 @@ func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 func NewIO(ctx context.Context) *chanIO {
 	w, h, _ := term.GetSize(int(os.Stderr.Fd()))
 	cio := newUnstartedIO(ctx, w, h)
-	go cio.forwardTo(os.Stderr)
+	go cio.handleViewports(ctx)
+	go cio.forwardTo(ctx, os.Stderr)
 	// go io.Copy(cio, os.Stdin) // FIXME: stdin forwarding is not working
 	return cio
 }
@@ -65,26 +67,65 @@ type chanIO struct {
 
 	width, height int
 	head, tail    *viewport
+	vreply        chan chan *viewport
 	notify        chan viewportChanged
 }
 
-func (i *chanIO) pushViewport() *viewport {
-	prev := i.head // TODO: data race
-	// TODO: height is not really relevant anymore?..
-	i.head = initViewport(i.ctx, i.notify, i.width, i.height)
-	i.head.fixedHeight = true
-	i.head.next = prev
-	return i.head
+func (i *chanIO) pushViewport() (*viewport, error) {
+	select {
+	case <-i.ctx.Done():
+		return nil, i.ctx.Err()
+	default:
+	}
+	added := make(chan *viewport)
+	defer close(added)
+	select {
+	case <-i.ctx.Done():
+		return nil, i.ctx.Err()
+	case i.vreply <- added:
+		select {
+		case <-i.ctx.Done():
+			return nil, i.ctx.Err()
+		default:
+		}
+		select {
+		case <-i.ctx.Done():
+			return nil, i.ctx.Err()
+		case vp := <-added:
+			return vp, nil
+		}
+	}
 }
 
-func (i *chanIO) forwardTo(w io.Writer) {
+func (i *chanIO) handleViewports(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case reply := <-i.vreply:
+			prev := i.head
+			// TODO: height is not really relevant anymore?..
+			i.head = initViewport(i.ctx, i.notify, i.width, i.height)
+			i.head.fixedHeight = true
+			i.head.next = prev
+			select {
+			case <-ctx.Done():
+				return
+			case reply <- i.head:
+			}
+		case line := <-i.Out:
+			// [chainIO.forwardTo] will flush the actual writer
+			i.tail.Write([]byte(line))
+		}
+	}
+}
+
+func (i *chanIO) forwardTo(ctx context.Context, w io.Writer) {
 	var prevH, currH int
 	for {
 		select {
-		case <-i.ctx.Done():
+		case <-ctx.Done():
 			return
-		case line := <-i.Out: // deadlocks here
-			i.tail.Write([]byte(line)) // fill buffer
 		case <-i.notify:
 			var buf bytes.Buffer
 			if prevH > 0 { // todo: separate thread for flushing all viewports and viewports have to notify it
