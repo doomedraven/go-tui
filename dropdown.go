@@ -115,7 +115,7 @@ var DefaultLabelTemplate = `{{ "?" | green }} {{ . | bold }}`
 var DefaultDropdownActiveItemTemplate = `{{ cyan "→ " . }}`
 var DefaultDropdownInactiveItemTemplate = `{{ dim "→ " . }}`
 var DefaultMoreItemsTemplate = ` {{ dim "↓ " .More " more … (" .Total " total)" | italic }}`
-var DefaultDropdownAnswerTemplate = `{{ dim "✔ " .Label " …" }} {{ .Answer | bold }}`
+var DefaultAnswerTemplate = `{{ dim "✔ " .Label " …" }} {{ .Answer | bold }}`
 
 type dropdownAnswer struct {
 	Label  string
@@ -193,14 +193,14 @@ func newDropdown() (*dropdown, error) {
 		ActiveItemTemplate:   DefaultDropdownActiveItemTemplate,
 		InactiveItemTemplate: DefaultDropdownInactiveItemTemplate,
 		MoreItemsTemplate:    DefaultMoreItemsTemplate,
-		AnswerTemplate:       DefaultDropdownAnswerTemplate,
+		AnswerTemplate:       DefaultAnswerTemplate,
 	}
 	return d, nil
 }
 
 func (d *dropdown) parseTemplates() error {
 	tmpl := template.New("dropdown").Funcs(colorFns)
-	labelTemplate, err := tmpl.New("label").Parse(d.mustEndWith(d.LabelTemplate, ' '))
+	labelTemplate, err := tmpl.New("label").Parse(mustEndWith(d.LabelTemplate, ' '))
 	if err != nil {
 		return fmt.Errorf("label: %w", err)
 	}
@@ -208,11 +208,11 @@ func (d *dropdown) parseTemplates() error {
 	if err != nil {
 		return fmt.Errorf("label: %w", err)
 	}
-	d.activeItemTemplate, err = tmpl.New("active").Parse(d.mustEndWith(d.ActiveItemTemplate, '\n'))
+	d.activeItemTemplate, err = tmpl.New("active").Parse(mustEndWith(d.ActiveItemTemplate, '\n'))
 	if err != nil {
 		return fmt.Errorf("active: %w", err)
 	}
-	d.inactiveItemTemplate, err = tmpl.New("inactive").Parse(d.mustEndWith(d.InactiveItemTemplate, '\n'))
+	d.inactiveItemTemplate, err = tmpl.New("inactive").Parse(mustEndWith(d.InactiveItemTemplate, '\n'))
 	if err != nil {
 		return fmt.Errorf("inactive: %w", err)
 	}
@@ -220,14 +220,14 @@ func (d *dropdown) parseTemplates() error {
 	if err != nil {
 		return fmt.Errorf("more: %w", err)
 	}
-	d.answerTemplate, err = tmpl.New("answer").Parse(d.mustEndWith(d.AnswerTemplate, '\n'))
+	d.answerTemplate, err = tmpl.New("answer").Parse(mustEndWith(d.AnswerTemplate, '\n'))
 	if err != nil {
 		return fmt.Errorf("answer: %w", err)
 	}
 	return nil
 }
 
-func (d *dropdown) mustEndWith(base string, r byte) string {
+func mustEndWith(base string, r byte) string {
 	if base[len(base)-1] != r {
 		base += string(r)
 	}

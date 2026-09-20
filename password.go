@@ -4,48 +4,126 @@
 package tui
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
-	"strings"
-
-	"golang.org/x/term"
+	"text/template"
 )
 
-func readPasswordWithStars(prompt string) (string, error) {
-	fmt.Print(prompt)
+type password struct {
+	config
 
-	// Get the file descriptor for standard input
-	fd := int(os.Stdin.Fd())
+	Label string
+	Hide  bool
 
-	// Set terminal to raw mode
-	oldState, err := term.MakeRaw(fd)
+	LabelTemplate   string
+	labelTemplate   *template.Template
+	AnswerTemplate  string
+	answerTemplate  *template.Template
+	ReplacementChar rune
+	typed           []rune
+
+	CheckFn func(rawPassword string) (string, bool)
+
+	// TODO: special case for testing?..
+	makeTermIO func(in io.Reader, out io.Writer) (*termIO, error)
+}
+
+func newPassword() *password {
+	return &password{
+		config: config{
+			ctx: context.Background(),
+			out: os.Stderr,
+			in:  os.Stdin,
+		},
+		Label:           "Enter password:",
+		LabelTemplate:   DefaultLabelTemplate,
+		AnswerTemplate:  DefaultAnswerTemplate,
+		ReplacementChar: '*',
+		makeTermIO:      makeTermIO,
+	}
+}
+
+func Password(option ...opt) (string, error) {
+	p := newPassword()
+	err := opts(option).Apply(p)
 	if err != nil {
 		return "", err
 	}
-	defer term.Restore(fd, oldState) // Restore terminal state on function exit
+	err = p.parseTemplates()
+	if err != nil {
+		return "", err
+	}
+	return p.run()
+}
 
-	// Read input character by character
-	var password strings.Builder
+func (p *password) run() (string, error) {
+	io, err := p.makeTermIO(p.in, p.out)
+	if err != nil {
+		return "", err
+	}
+	defer io.Restore()
+	var frame bytes.Buffer
+	var init bool
 	for {
-		var buf [1]byte
-		_, err := os.Stdin.Read(buf[:])
+		if !init {
+			init = true
+		}
+		err = p.labelTemplate.Execute(&frame, p.Label)
+		if err != nil {
+			return "", fmt.Errorf("label: %w", err)
+		}
+		for range len(p.typed) {
+			frame.WriteRune(p.ReplacementChar)
+		}
+		frame.WriteRune('\r')
+		frame.WriteRune('\n')
+		_, err = frame.WriteTo(io.out)
 		if err != nil {
 			return "", err
 		}
-
-		if buf[0] == '\n' || buf[0] == '\r' { // Enter key pressed
-			fmt.Println() // Move to the next line
-			break
-		} else if buf[0] == 127 { // Backspace key pressed
-			if password.Len() > 0 {
-				// password.Truncate(password.Len() - 1)
-				fmt.Print("\b \b") // Erase the last star
+		select {
+		case <-p.ctx.Done():
+			return "", p.ctx.Err()
+		default:
+			key, err := io.ReadRune()
+			io.clear(1, &frame)
+			if err != nil {
+				if errors.Is(err, ErrUnknownRune) {
+					continue
+				}
+				frame.WriteTo(io) // clear the screen
+				// Ctrl+C or Ctrl+D
+				return "", err
 			}
-		} else {
-			password.WriteByte(buf[0])
-			fmt.Print("*") // Print a star for each character
+			switch key {
+			case keyEnter:
+				frame.WriteTo(io)
+				return string(p.typed), nil
+			case 0x7f: // backspace
+				if len(p.typed) > 0 {
+					fmt.Fprintf(&frame, "\x1b[1K")
+					p.typed = p.typed[:len(p.typed)-1]
+				}
+			default:
+				p.typed = append(p.typed, key)
+			}
 		}
 	}
+}
 
-	return password.String(), nil
+func (p *password) parseTemplates() (err error) {
+	tmpl := template.New("dropdown").Funcs(colorFns)
+	p.labelTemplate, err = tmpl.New("label").Parse(mustEndWith(p.LabelTemplate, ' '))
+	if err != nil {
+		return fmt.Errorf("label: %w", err)
+	}
+	p.answerTemplate, err = tmpl.New("answer").Parse(mustEndWith(p.AnswerTemplate, '\n'))
+	if err != nil {
+		return fmt.Errorf("answer: %w", err)
+	}
+	return nil
 }
