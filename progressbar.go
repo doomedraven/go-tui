@@ -196,15 +196,18 @@ func NewFileProgressReader(r io.Reader, label string, opts ...opt) (*wrapReader,
 	if err != nil {
 		return nil, fmt.Errorf("size: %w", err)
 	}
-	p.out = os.Stderr
-	p.label = label
 	p.maxNum = size
-	p.startedAt = p.now()
-	p.maxWidth = 50 // default width for the progress bar
 	p.io, err = p.makeTermIO(p.in, p.out)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("make io: %w", err)
 	}
+	err = p.io.Restore()
+	if err != nil {
+		return nil, fmt.Errorf("restore: %w", err)
+	}
+	p.maxWidth = p.io.Width
+	p.label = label
+	p.startedAt = p.now()
 	go p.start(p.ctx)
 	return wrap, nil
 }
