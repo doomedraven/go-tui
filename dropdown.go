@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"text/template"
 )
@@ -64,6 +65,12 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	// apparently, there's no other non-reflective way around
 	anyItems := make([]any, len(items))
 	for i, v := range items {
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Ptr && rv.IsNil() {
+			continue
+		} else if rv.IsZero() {
+			continue
+		}
 		anyItems[i] = v
 	}
 	i, err := DropdownIndex(label, anyItems, opts...)
