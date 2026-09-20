@@ -47,8 +47,9 @@ func newPassword() *password {
 	}
 }
 
-func Password(option ...opt) (string, error) {
+func Password(label string, option ...opt) (string, error) {
 	p := newPassword()
+	p.Label = label
 	err := opts(option).Apply(p)
 	if err != nil {
 		return "", err
@@ -89,7 +90,7 @@ func (p *password) run() (string, error) {
 		case <-p.ctx.Done():
 			return "", p.ctx.Err()
 		default:
-			key, err := io.ReadRune()
+			key, err := io.ReadKey()
 			io.clear(1, &frame)
 			if err != nil {
 				if errors.Is(err, ErrUnknownRune) {

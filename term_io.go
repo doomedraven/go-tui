@@ -23,6 +23,8 @@ type termIO struct {
 
 	cio *chanIO
 	vp  *viewport
+
+	bm1, bm2 byte
 }
 
 var ErrNoTTY = fmt.Errorf("no tty")
@@ -110,6 +112,22 @@ const (
 )
 
 var ErrUnknownRune = fmt.Errorf("unknown rune")
+
+func (t *termIO) ReadKey() (rune, error) {
+	buf := make([]byte, 1)
+	_, err := t.Read(buf)
+	if err != nil {
+		return 0, err
+	}
+	// keep last two entered bytes
+	t.bm1, t.bm2 = buf[0], t.bm1
+	switch buf[0] {
+	case keyCtrlC, keyCtrlD:
+		return 0, io.EOF
+	default:
+		return rune(buf[0]), nil
+	}
+}
 
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
