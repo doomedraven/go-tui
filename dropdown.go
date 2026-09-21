@@ -68,10 +68,12 @@ func Confirm(action string, opts ...opt) bool {
 	return strings.ToLower(res) == "yes"
 }
 
+var ErrNoItems = errors.New("no items provided")
+
 func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	var zero T
 	if len(items) == 0 {
-		return zero, fmt.Errorf("no items provided")
+		return zero, ErrNoItems
 	}
 	// apparently, there's no other non-reflective way around
 	anyItems := make([]any, len(items))
