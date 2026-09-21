@@ -153,7 +153,7 @@ func (p *input) pressEnter(frame *bytes.Buffer, io *termIO) (string, error) {
 		return "", fmt.Errorf("write: %w", err)
 	}
 
-	return string(p.typed), nil
+	return p.typed, nil
 }
 
 func (p *input) pressBackspace(frame *bytes.Buffer) {

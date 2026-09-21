@@ -13,7 +13,7 @@ import (
 
 func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cio := &chanIO{
 		ctx: ctx,
 		In:  make(chan string),

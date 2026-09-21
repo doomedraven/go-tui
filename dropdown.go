@@ -129,10 +129,7 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 
 func DropdownLazy[V any](label string, itemFn iter.Seq2[V, error], o ...opt) (V, error) {
 	var zero V
-	d, err := newDropdown()
-	if err != nil {
-		return zero, err
-	}
+	d := newDropdown()
 	d.Label = label
 	d.itItems = make(chan itPair)
 	go func() {
@@ -166,10 +163,7 @@ func DropdownLazy[V any](label string, itemFn iter.Seq2[V, error], o ...opt) (V,
 }
 
 func DropdownIndex(label string, items []any, o ...opt) (int, error) {
-	d, err := newDropdown()
-	if err != nil {
-		return -1, err
-	}
+	d := newDropdown()
 	d.Label = label
 	d.Items = items
 	i, err := d.dropdownIndex(o...)
@@ -303,8 +297,8 @@ func WithAnswerTemplate(tmpl string) opt {
 	})
 }
 
-func newDropdown() (*dropdown, error) {
-	d := &dropdown{
+func newDropdown() *dropdown {
+	return &dropdown{
 		in:                   os.Stdin,
 		out:                  os.Stderr,
 		Ctx:                  context.Background(),
@@ -317,8 +311,6 @@ func newDropdown() (*dropdown, error) {
 		AnswerTemplate:       DefaultAnswerTemplate,
 		IterBatchSize:        10,
 	}
-
-	return d, nil
 }
 
 func (d *dropdown) parseTemplates() error {
@@ -524,7 +516,7 @@ type dropdownMore struct {
 	Total int
 }
 
-func (d *dropdown) height(io *termIO) int {
+func (d *dropdown) height() int {
 	// TODO: once viewport is more stable, use it here
 	height, total := len(d.displayed), len(d.relevant)
 	if total > height {
@@ -548,7 +540,7 @@ func (d *dropdown) run() (int, error) {
 	if io.Height < 3 {
 		return -1, ErrNoSpace
 	}
-	frame := bytes.NewBuffer(make([]byte, d.height(io)*io.Width))
+	frame := bytes.NewBuffer(make([]byte, d.height()*io.Width))
 	frame.Reset()
 	for {
 		i, err := d.runRender(io, frame)
@@ -570,7 +562,7 @@ func (d *dropdown) runRender(io *termIO, frame *bytes.Buffer) (int, error) {
 	if err != nil {
 		return -1, fmt.Errorf("write: %w", err)
 	}
-	space := d.height(io)
+	space := d.height()
 	displayed := len(d.displayed)
 	select {
 	case it, more := <-d.itItems:
