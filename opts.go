@@ -86,7 +86,9 @@ func WithTimeout(timeout time.Duration) opt {
 			return fmt.Errorf("%w: cannot set context", ErrInvalidState)
 		}
 		ctx := x.getContext()
-		ctx, _ = context.WithTimeout(ctx, timeout)
+		// at the moment our interfaces don't care about cancellation,
+		// but we may want to revisit this later.
+		ctx, _ = context.WithTimeout(ctx, timeout) //nolint:govet // ...
 		x.setContext(ctx)
 
 		return nil

@@ -60,7 +60,7 @@ func newMultichoice() *multichoice {
 
 // render displays the dropdown.
 //
-//nolint:cyclop // TODO: unfinished
+//nolint:cyclop,funlen,gocognit // TODO: unfinished
 func (m *multichoice) render(io *termIO, buf *viewport) error {
 	// use buffer to write to io only once
 	var prefix int
@@ -174,7 +174,7 @@ type multichoiceItem struct {
 	Active   bool
 }
 
-//nolint:cyclop,errcheck // TODO: unfinished
+//nolint:cyclop,errcheck,funlen,gocognit // TODO: unfinished
 func (m *multichoice) run() error {
 	io, err := m.makeTermIO(m.in, m.out)
 	if err != nil {
@@ -203,7 +203,7 @@ func (m *multichoice) run() error {
 
 			return m.Ctx.Err()
 		default:
-			key, err := io.ReadRune()
+			key, _, err := io.ReadRune()
 			io.clear(space, frame)
 			if err != nil {
 				if errors.Is(err, ErrUnknownRune) {

@@ -118,7 +118,7 @@ func (p *input) run() (string, error) {
 }
 
 func (p *input) pressKey(io *termIO, frame *bytes.Buffer) (string, error) {
-	key, err := io.ReadRune()
+	key, _, err := io.ReadRune()
 	if err != nil {
 		if errors.Is(err, ErrUnknownRune) {
 			return "", nil

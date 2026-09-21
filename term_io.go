@@ -114,25 +114,24 @@ func (t *termIO) ReadKey() (rune, error) {
 	}
 }
 
-// TODO: fix stdmethod (rune, int, error).
-func (t *termIO) ReadRune() (rune, error) {
+func (t *termIO) ReadRune() (rune, int, error) {
 	buf := make([]byte, 4)
 	n, err := t.Read(buf) // todo: fixme
 	if errors.Is(err, io.EOF) {
-		return keyCtrlD, io.EOF
+		return keyCtrlD, n, io.EOF
 	}
 	r, ok := t.maybeKnownRune(buf[:n])
 	if ok {
-		return r, nil
+		return r, n, nil
 	}
 	if n > 1 {
-		return 0, fmt.Errorf("%w: %x", ErrUnknownRune, buf)
+		return 0, n, fmt.Errorf("%w: %x", ErrUnknownRune, buf)
 	}
 	switch buf[0] {
 	case keyCtrlC, keyCtrlD:
-		return 0, io.EOF
+		return 0, n, io.EOF
 	default:
-		return rune(buf[0]), nil
+		return rune(buf[0]), n, nil
 	}
 }
 

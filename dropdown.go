@@ -658,7 +658,7 @@ func (d *dropdown) loadItem(io *termIO, frame *bytes.Buffer, it itPair, more boo
 }
 
 func (d *dropdown) pressKey(io *termIO, frame *bytes.Buffer, space, displayed int) (i int, err error) {
-	key, err := io.ReadRune()
+	key, _, err := io.ReadRune()
 	if err != nil {
 		return -1, err
 	}
