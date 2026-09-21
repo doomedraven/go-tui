@@ -124,6 +124,7 @@ func prettyJsonOpenObject(stack []jsonState, w *bytes.Buffer, ch byte, depth int
 	w.WriteString(bold)
 	w.WriteByte(ch)
 	w.WriteString(reset)
+
 	return depth, stack
 }
 
@@ -133,6 +134,7 @@ func prettyJsonOpenArray(stack []jsonState, w *bytes.Buffer, ch byte, depth int)
 	w.WriteString(bold)
 	w.WriteByte(ch)
 	w.WriteString(reset)
+
 	return depth, stack
 }
 
@@ -142,6 +144,7 @@ func prettyJsonClose(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (in
 	w.WriteString(bold)
 	w.WriteByte(ch)
 	w.WriteString(reset)
+
 	return depth, stack
 }
 
@@ -151,6 +154,7 @@ func prettyJsonColon(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
 		stack = append(stack, jsonValue)
 	}
 	w.WriteByte(ch)
+
 	return stack
 }
 
@@ -160,12 +164,14 @@ func prettyJsonComma(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
 		stack = stack[:len(stack)-1]
 	}
 	w.WriteByte(ch)
+
 	return stack
 }
 
 func pretttJsonBackslash(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
 	stack = append(stack, jsonEscape)
 	w.WriteByte(ch)
+
 	return stack
 }
 
@@ -193,6 +199,7 @@ func prettyJsonQuote(stack []jsonState, w *bytes.Buffer, ch byte, depth int) []j
 	default:
 		w.WriteByte(ch)
 	}
+
 	return stack
 }
 

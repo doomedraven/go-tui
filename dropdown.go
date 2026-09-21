@@ -200,6 +200,7 @@ func (d *dropdown) showAnswer(label string, item any) error {
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
+
 	return nil
 }
 
@@ -219,6 +220,7 @@ func (d *dropdown) dropdownIndex(o ...opt) (int, error) {
 	if err != nil {
 		return -1, err
 	}
+
 	return d.relevant[j], nil
 }
 
@@ -444,6 +446,7 @@ func (d *dropdown) renderInit(io *termIO) (longest int, err error) {
 		longest = max(longest, d.widths[i])
 	}
 	d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+
 	return longest, nil
 }
 
@@ -474,6 +477,7 @@ func (d *dropdown) renderLabel(buf *bytes.Buffer, io *termIO, longest int) int {
 		d.LabelNewLine = true
 		prefix = 0
 	}
+
 	return prefix
 }
 
@@ -494,6 +498,7 @@ func (d *dropdown) renderItem(io *termIO, i, j int) (item bbuf, err error) {
 		// this may fail if active item is wider than the terminal, but we can solve this later
 		item = truncateVisible(item, io.Width-1, '\n')
 	}
+
 	return item, nil
 }
 
@@ -570,6 +575,7 @@ func (d *dropdown) runRender(io *termIO, frame *bytes.Buffer) (int, error) {
 	select {
 	case it, more := <-d.itItems:
 		err := d.loadItem(io, frame, it, more, space)
+
 		return -1, err
 	case <-d.Ctx.Done():
 		err = io.clear(space, frame)
@@ -596,6 +602,7 @@ func (d *dropdown) runMain(io *termIO, frame *bytes.Buffer, space, displayed int
 		return -1, nil
 	} else if err != nil {
 		frame.WriteTo(io) //nolint:errcheck // we can't do much about it here
+
 		return -1, err
 	}
 	if i < 0 {
@@ -605,6 +612,7 @@ func (d *dropdown) runMain(io *termIO, frame *bytes.Buffer, space, displayed int
 	if err != nil {
 		return -1, fmt.Errorf("write: %w", err)
 	}
+
 	return i, nil
 }
 
@@ -686,6 +694,7 @@ func (d *dropdown) pressKey(io *termIO, frame *bytes.Buffer, space, displayed in
 			return 0, nil
 		}
 	}
+
 	return -1, nil
 }
 
@@ -727,10 +736,12 @@ func (d *dropdown) pressAny(key rune, displayed, space int) bool {
 	if len(d.relevant) == 0 {
 		d.typed = d.typed[:len(d.typed)-1]
 		d.relevant = d.trie.Prefix(string(d.typed))
+
 		return false
 	}
 	d.displayed = d.relevant[:min(len(d.relevant), displayed, space)]
 	d.selected = 0
 	d.offset = 0
+
 	return false
 }

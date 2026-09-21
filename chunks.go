@@ -80,6 +80,7 @@ func truncateAsciiEscapes(escape bool, chunk string, lo, m, width int) (bool, in
 		escape = true
 		width--
 	}
+
 	return escape, m, width
 }
 
@@ -90,5 +91,6 @@ func truncateAsciiFinish(chunk string, lo, m int) string {
 		// reset every SGR
 		raw = append(raw, '\x1b', '[', '0', 'm')
 	}
+
 	return string(raw)
 }

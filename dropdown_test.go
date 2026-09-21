@@ -23,6 +23,7 @@ func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt)
 		close(cio.In)
 		close(cio.Out)
 	})
+
 	return cio, WithOptions(append(opts{
 		WithInput(cio),
 		WithOutput(cio),
@@ -37,6 +38,7 @@ func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt)
 					Restore: func() error { return nil },
 				}, nil
 			}
+
 			return nil
 		}),
 		WithLabelTemplate("{{ . }}"),
@@ -55,6 +57,7 @@ func confirmForTest(t *testing.T) (in, out chan string, result chan bool) {
 		defer close(result)
 		result <- Confirm("Are you sure?", opts)
 	}()
+
 	return cio.In, cio.Out, result
 }
 
@@ -110,6 +113,7 @@ func overflowForTest(t *testing.T) (in, out chan string, result chan string) {
 		assert.NoError(t, err)
 		result <- v
 	}()
+
 	return cio.In, cio.Out, result
 }
 
@@ -178,6 +182,7 @@ func otherDropdownForTest(t *testing.T) (in, out chan string, result chan string
 		assert.NoError(t, err)
 		result <- v
 	}()
+
 	return cio.In, cio.Out, result
 }
 

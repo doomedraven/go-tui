@@ -217,6 +217,7 @@ func (v *viewport) addLine(chunk []byte, lo, mid int, addedLines int) (int, int)
 		addedLines++
 	}
 	lo = mid
+
 	return lo, addedLines
 }
 

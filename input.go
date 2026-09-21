@@ -143,6 +143,7 @@ func (p *input) pressKey(io *termIO, frame *bytes.Buffer) (string, error) {
 	default:
 		p.pressAny(key)
 	}
+
 	return "", nil
 }
 
