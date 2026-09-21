@@ -73,7 +73,7 @@ func main() {
 				}
 				if counter > 11 {
 					if third == nil {
-						third = s.MustAddBackground()
+						third = s.MustAddBackground() //nolint:contextcheck // example
 					}
 					third.Updatef("New spinner for counter: %d", counter)
 				}

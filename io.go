@@ -45,7 +45,7 @@ func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 		width:  width,
 		height: height,
 	}
-	cio.head = initViewport(cio.ctx, cio.notify, cio.width, cio.height)
+	cio.head = initViewport(ctx, cio.notify, cio.width, cio.height)
 	cio.tail = cio.head
 
 	return cio
@@ -107,7 +107,7 @@ func (i *chanIO) handleViewports(ctx context.Context) {
 		case reply := <-i.vreply:
 			prev := i.head
 			// TODO: height is not really relevant anymore?..
-			i.head = initViewport(i.ctx, i.notify, i.width, i.height)
+			i.head = initViewport(ctx, i.notify, i.width, i.height)
 			i.head.fixedHeight = true
 			i.head.next = prev
 			select {
