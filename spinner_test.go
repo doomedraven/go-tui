@@ -13,7 +13,7 @@ import (
 )
 
 func testIOforSpinners(t *testing.T, width, height int, o ...opt) (*chanIO, func(), opt) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cio := &chanIO{
 		ctx: ctx,
 		In:  make(chan string),
@@ -27,6 +27,7 @@ func testIOforSpinners(t *testing.T, width, height int, o ...opt) (*chanIO, func
 		close(cio.Out)
 		close(ticks)
 	})
+
 	return cio, func() {
 			go func() {
 				select {
@@ -49,6 +50,7 @@ func testIOforSpinners(t *testing.T, width, height int, o ...opt) (*chanIO, func
 						Restore: func() error { return nil },
 					}, nil
 				}
+
 				return nil
 			}),
 		}, o...,
@@ -59,6 +61,7 @@ func spinnersForTest(t *testing.T) (*Spinners, *chanIO, func()) {
 	cio, tick, opts := testIOforSpinners(t, 12, 4)
 	s, err := NewSpinners(opts)
 	assert.NoError(t, err)
+
 	return s, cio, tick
 }
 
@@ -68,7 +71,7 @@ func TestNewSpinners(t *testing.T) {
 	assert.NotNil(t, cio)
 
 	// test that the spinner is created
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	first, err := s.Add(ctx)
 	assert.NoError(t, err)
 

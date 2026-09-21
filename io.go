@@ -21,6 +21,7 @@ func (b *bbuf) String() string {
 
 func (b *bbuf) Write(p []byte) (n int, err error) {
 	*b = append(*b, p...)
+
 	return len(p), nil
 }
 
@@ -46,6 +47,7 @@ func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 	}
 	cio.head = initViewport(cio.ctx, cio.notify, cio.width, cio.height)
 	cio.tail = cio.head
+
 	return cio
 }
 
@@ -58,7 +60,7 @@ func NewIO(ctx context.Context) *chanIO {
 	return cio
 }
 
-// implements [io.ReadWriter]
+// implements [io.ReadWriter].
 type chanIO struct {
 	In  chan string
 	Out chan string
@@ -133,7 +135,7 @@ func (i *chanIO) forwardTo(ctx context.Context, w io.Writer) {
 				// Move cursor up to the beginning of the dropdown
 				fmt.Fprintf(&buf, "\x1b[%dA", space)
 				// Clear each line
-				for i := 0; i < space; i++ {
+				for i := range space {
 					fmt.Fprint(&buf, "\r")     // return to start of line
 					fmt.Fprint(&buf, "\x1b[K") // clear current line
 					if i < space-1 {
@@ -165,6 +167,7 @@ func (i *chanIO) Read(p []byte) (n int, err error) {
 			return 0, io.EOF
 		}
 		copy(p, res)
+
 		return len(res), nil
 	}
 }

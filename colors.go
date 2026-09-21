@@ -11,7 +11,7 @@ import (
 const (
 	reset = "\x1b[0m"
 
-	// Colors
+	// Colors.
 	black  = "\x1b[30m"
 	red    = "\x1b[31m"
 	green  = "\x1b[32m"
@@ -21,7 +21,7 @@ const (
 	cyan   = "\x1b[36m"
 	white  = "\x1b[37m"
 
-	// Bright colors
+	// Bright colors.
 	brightBlack  = "\x1b[90m"
 	brightRed    = "\x1b[91m"
 	brightGreen  = "\x1b[92m"
@@ -31,7 +31,7 @@ const (
 	brightCyan   = "\x1b[96m"
 	brightWhite  = "\x1b[97m"
 
-	// Background colors
+	// Background colors.
 	bgBlack  = "\x1b[40m"
 	bgRed    = "\x1b[41m"
 	bgGreen  = "\x1b[42m"
@@ -41,7 +41,7 @@ const (
 	bgCyan   = "\x1b[46m"
 	bgWhite  = "\x1b[47m"
 
-	// Text combineting
+	// Text combineting.
 	bold          = "\x1b[1m"
 	dim           = "\x1b[2m"
 	italic        = "\x1b[3m"
@@ -91,6 +91,7 @@ func ansciiFormatter(codes ...string) func(...any) string {
 			result += fmt.Sprint(t)
 		}
 		result += reset
+
 		return result
 	}
 }

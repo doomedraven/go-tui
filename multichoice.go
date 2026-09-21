@@ -58,7 +58,7 @@ func newMultichoice() *multichoice {
 	}
 }
 
-// render displays the dropdown
+// render displays the dropdown.
 func (m *multichoice) render(io *termIO, buf *viewport) error {
 	// use buffer to write to io only once
 	var prefix int
@@ -135,6 +135,7 @@ func (m *multichoice) render(io *termIO, buf *viewport) error {
 		buf.WriteByte('\n')
 	}
 	buf.WriteByte('\r')
+
 	return nil
 }
 
@@ -169,6 +170,7 @@ func (m *multichoice) run() error {
 		case <-m.Ctx.Done():
 			io.clear(space, frame)
 			frame.WriteTo(io)
+
 			return m.Ctx.Err()
 		default:
 			key, err := io.ReadRune()
@@ -184,6 +186,7 @@ func (m *multichoice) run() error {
 			switch key {
 			case keyEnter:
 				frame.WriteTo(io)
+
 				return nil
 			case '↑':
 				if m.offset > 0 && m.active == 0 { // page up

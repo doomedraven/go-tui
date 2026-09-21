@@ -32,6 +32,7 @@ func ExampleDropdown_withStructs() {
 	)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+
 		return
 	}
 	fmt.Printf("Hello, %s!\n", v.Name)

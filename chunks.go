@@ -11,7 +11,7 @@ func isEscapeStart(r byte) bool {
 	return r == '\x1b' || r == '\x9b'
 }
 
-// see https://github.com/rivo/uniseg for a more complete implementation
+// see https://github.com/rivo/uniseg for a more complete implementation.
 func width(chunk []byte) int {
 	lo, hi, w := 0, len(chunk), 0
 	var escape bool
@@ -27,6 +27,7 @@ func width(chunk []byte) int {
 		}
 		lo++
 	}
+
 	return w
 }
 
@@ -35,6 +36,7 @@ func truncateVisible(chunk []byte, maxLen int, tailer byte) (out []byte) {
 	if out[len(out)-1] != tailer {
 		out = append(out, tailer)
 	}
+
 	return
 }
 
@@ -78,5 +80,6 @@ func truncateASCII(chunk string, maxLen int) (out string) {
 		raw = append(raw, '\x1b', '[', '0', 'm')
 	}
 	out = string(raw)
-	return
+
+	return out
 }

@@ -14,6 +14,7 @@ func NewTUI(ctx context.Context, opts ...opt) (*Tui, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &Tui{
 		opts:   opts,
 		ctx:    ctx,
@@ -28,19 +29,21 @@ type Tui struct {
 }
 
 func (t *Tui) prependView() *viewport {
-	cio, ok := t.termIO.out.(*chanIO)
+	cio, ok := t.out.(*chanIO)
 	if !ok {
 		panic("cannot get view")
 	}
 	top := &viewport{next: cio.head, width: cio.width}
 	cio.head = top
+
 	return top
 }
 
 func (t *Tui) view() *viewport {
-	cio, ok := t.termIO.out.(*chanIO)
+	cio, ok := t.out.(*chanIO)
 	if ok {
 		return cio.head
 	}
+
 	return nil
 }

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -14,6 +15,7 @@ type clipboard struct{}
 
 func ShouldPasteFromClipboard() string {
 	content, _ := (&clipboard{}).Read()
+
 	return content
 }
 
@@ -41,9 +43,11 @@ func (cr *clipboard) pasteCommand() (*exec.Cmd, error) {
 		if err != nil {
 			continue
 		}
+
 		return exec.Command(args[0], args[1:]...), nil
 	}
-	return nil, fmt.Errorf("no clipboard paste utility found")
+
+	return nil, errors.New("no clipboard paste utility found")
 }
 
 func (cr *clipboard) Read() (string, error) {
@@ -56,5 +60,6 @@ func (cr *clipboard) Read() (string, error) {
 		return "", fmt.Errorf("run: %w", err)
 	}
 	content := strings.TrimRight(string(output), "\n\r")
+
 	return content, nil
 }

@@ -5,7 +5,6 @@ package tui
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"testing"
 
@@ -71,7 +70,7 @@ without any escaping characters.`,
 }
 
 func TestViewportLinkedList(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	notify := make(chan viewportChanged)
 	v := initViewport(ctx, notify, 10, 4)
 	v.lines = [][]byte{[]byte("a\n"), []byte("b\n")}
@@ -85,7 +84,7 @@ func TestViewportLinkedList(t *testing.T) {
 }
 
 func TestWriteToRotated(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	notify := make(chan viewportChanged)
 	v := initViewport(ctx, notify, 10, 5)
 	v.fixedHeight = true

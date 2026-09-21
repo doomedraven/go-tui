@@ -5,7 +5,7 @@ package tui
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"time"
 )
@@ -22,6 +22,7 @@ func (o opts) Apply(d any) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -40,9 +41,10 @@ func WithInput(r io.Reader) opt {
 	return func(d any) error {
 		io, ok := d.(withIO)
 		if !ok {
-			return fmt.Errorf("cannot set IO")
+			return errors.New("cannot set IO")
 		}
 		io.setReader(r)
+
 		return nil
 	}
 }
@@ -51,9 +53,10 @@ func WithOutput(w io.Writer) opt {
 	return func(d any) error {
 		io, ok := d.(withIO)
 		if !ok {
-			return fmt.Errorf("cannot set IO")
+			return errors.New("cannot set IO")
 		}
 		io.setWriter(w)
+
 		return nil
 	}
 }
@@ -63,14 +66,15 @@ type withContext interface {
 	getContext() context.Context
 }
 
-// design tradeoff - we're not passing context as the first argument, because we don't always need it
+// design tradeoff - we're not passing context as the first argument, because we don't always need it.
 func WithContext(ctx context.Context) opt {
 	return func(d any) error {
 		x, ok := d.(withContext)
 		if !ok {
-			return fmt.Errorf("cannot set context")
+			return errors.New("cannot set context")
 		}
 		x.setContext(ctx)
+
 		return nil
 	}
 }
@@ -79,11 +83,12 @@ func WithTimeout(timeout time.Duration) opt {
 	return func(d any) error {
 		x, ok := d.(withContext)
 		if !ok {
-			return fmt.Errorf("cannot set context")
+			return errors.New("cannot set context")
 		}
 		ctx := x.getContext()
 		ctx, _ = context.WithTimeout(ctx, timeout)
 		x.setContext(ctx)
+
 		return nil
 	}
 }
@@ -94,22 +99,22 @@ type config struct {
 	out io.Writer
 }
 
-// implement [withContext] interface
+// implement [withContext] interface.
 func (c *config) setContext(ctx context.Context) {
 	c.ctx = ctx
 }
 
-// implement [withContext] interface
+// implement [withContext] interface.
 func (c *config) getContext() context.Context {
 	return c.ctx
 }
 
-// implement [withIO] interface
+// implement [withIO] interface.
 func (c *config) setReader(r io.Reader) {
 	c.in = r
 }
 
-// implement [withIO] interface
+// implement [withIO] interface.
 func (c *config) setWriter(w io.Writer) {
 	c.out = w
 }

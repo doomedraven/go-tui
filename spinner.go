@@ -16,7 +16,7 @@ import (
 )
 
 // These two styles are taken from cli-spinners (MIT License)
-// See https://github.com/sindresorhus/cli-spinners/blob/main/spinners.json for more spinner styles
+// See https://github.com/sindresorhus/cli-spinners/blob/main/spinners.json for more spinner styles.
 var DefaultSpinnerStyle = []string{"⠉⠉", "⠈⠙", "⠀⠹", "⠀⢸", "⠀⣰", "⢀⣠", "⣀⣀", "⣄⡀", "⣆⠀", "⡇⠀", "⠏⠀", "⠋⠁"}
 var SpinnerStyleDocs = []string{".  ", ".. ", "...", " ..", "  .", "   "}
 
@@ -43,6 +43,7 @@ func spinnersOpt(o func(s *Spinners) error) opt {
 		if !ok {
 			return nil
 		}
+
 		return o(s)
 	}
 }
@@ -50,6 +51,7 @@ func spinnersOpt(o func(s *Spinners) error) opt {
 func newSpinners() *Spinners {
 	ctx, cancel := context.WithCancel(context.Background())
 	ticker := time.NewTicker(100 * time.Millisecond)
+
 	return &Spinners{
 		config: config{
 			ctx: ctx,
@@ -78,6 +80,7 @@ func NewSpinners(opt ...opt) (*Spinners, error) {
 	}
 	s.io.Restore() // todo: hack, fix this
 	go s.start(s.ctx)
+
 	return s, nil
 }
 
@@ -100,6 +103,7 @@ func (s *Spinners) start(ctx context.Context) {
 				s.wg.Done()
 			}
 			s.stop()
+
 			return
 		case ns := <-s.creates:
 			// TODO: write serially in CI mode, as well as when number of spinners
@@ -116,7 +120,7 @@ func (s *Spinners) start(ctx context.Context) {
 	}
 }
 
-// updateOffset is a concurrent client for [Spinners.updateSpinner]
+// updateOffset is a concurrent client for [Spinners.updateSpinner].
 func (s *Spinners) updateOffset(offset int, message string, err error) {
 	select {
 	case <-s.ctx.Done():
@@ -141,7 +145,7 @@ type updateOffset struct {
 	err     error
 }
 
-// updateSpinner is a serial handler for [Spinners.updateOffset]
+// updateSpinner is a serial handler for [Spinners.updateOffset].
 func (s *Spinners) updateSpinner(update updateOffset) {
 	if s.state[update.offset] == nil {
 		return // it's already stopped and we don't care
@@ -153,7 +157,7 @@ func (s *Spinners) updateSpinner(update updateOffset) {
 	s.state[update.offset].Message = update.message
 }
 
-// concurrent client for [Spinners.stopSpinner]
+// concurrent client for [Spinners.stopSpinner].
 func (s *Spinners) stopOffset(offset int) error {
 	// select statement is selecting cases semi-randomly, so we need to check for context first,
 	// otherwise we might end up sending to a closed channel.
@@ -170,7 +174,7 @@ func (s *Spinners) stopOffset(offset int) error {
 	}
 }
 
-// stopSpinner is a serial handler for [Spinners.stopOffset]
+// stopSpinner is a serial handler for [Spinners.stopOffset].
 func (s *Spinners) stopSpinner(offset int) {
 	if offset >= 0 && offset < len(s.state) {
 		if s.state[offset] == nil {
@@ -217,6 +221,7 @@ func (s *Spinners) redraw(prevActive int) int {
 	}
 	prevActive = currActive
 	frame.WriteTo(s.io)
+
 	return currActive
 }
 
@@ -281,6 +286,7 @@ func (s *Spinners) MustAddBackground(opt ...opt) *Spinner {
 	if err != nil {
 		panic(err)
 	}
+
 	return spinner
 }
 
@@ -292,11 +298,12 @@ func WithPrefixf(prefix string, args ...any) opt {
 			return nil
 		}
 		cs.prefix = fmt.Sprintf(prefix, args...)
+
 		return nil
 	}
 }
 
-// WithKeep will keep the spinner displayed after it's done
+// WithKeep will keep the spinner displayed after it's done.
 func WithKeep() opt {
 	return func(a any) error {
 		cs, ok := a.(*createSpinner)
@@ -304,6 +311,7 @@ func WithKeep() opt {
 			return nil
 		}
 		cs.keep = true
+
 		return nil
 	}
 }
@@ -315,6 +323,7 @@ func WithFrames(frames []string) opt {
 			return nil
 		}
 		cs.frames = frames
+
 		return nil
 	}
 }
@@ -353,6 +362,7 @@ func (s *Spinners) Add(ctx context.Context, opt ...opt) (*Spinner, error) {
 				offset: offset,
 			}
 			go spinner.monitor(ctx)
+
 			return spinner, nil
 		}
 	}
@@ -373,22 +383,22 @@ func (s *Spinner) monitor(ctx context.Context) {
 	}
 }
 
-// Close will stop the spinner and remove it from display if it's not kept
+// Close will stop the spinner and remove it from display if it's not kept.
 func (s *Spinner) Close() error { // TODO: what about s.cancel?..
 	return s.parent.stopOffset(s.offset)
 }
 
-// Update will update the spinner with a new message
+// Update will update the spinner with a new message.
 func (s *Spinner) Update(message string) {
 	s.parent.updateOffset(s.offset, message, nil)
 }
 
-// Updatef will update the spinner with a formatted message
+// Updatef will update the spinner with a formatted message.
 func (s *Spinner) Updatef(format string, args ...any) {
 	s.parent.updateOffset(s.offset, fmt.Sprintf(format, args...), nil)
 }
 
-// Fail will stop the spinner and display an error message
+// Fail will stop the spinner and display an error message.
 func (s *Spinner) Fail(err error) {
 	s.parent.updateOffset(s.offset, "", err)
 }

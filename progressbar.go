@@ -6,6 +6,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,7 @@ func progressbarOpt(o func(s *Progressbar) error) opt {
 		if !ok {
 			return nil
 		}
+
 		return o(s)
 	}
 }
@@ -26,6 +28,7 @@ func progressbarOpt(o func(s *Progressbar) error) opt {
 func WithFormatRate(f func(float64) string) opt {
 	return progressbarOpt(func(p *Progressbar) error {
 		p.fmtRate = f
+
 		return nil
 	})
 }
@@ -33,6 +36,7 @@ func WithFormatRate(f func(float64) string) opt {
 func newProgressbar() *Progressbar {
 	ctx, cancel := context.WithCancel(context.Background())
 	ticker := time.NewTicker(100 * time.Millisecond)
+
 	return &Progressbar{
 		config: config{
 			ctx: ctx,
@@ -72,6 +76,7 @@ func (p *Progressbar) Add(num int64) {
 
 func (p *Progressbar) Close() error {
 	p.cancel()
+
 	return p.err
 }
 
@@ -85,9 +90,10 @@ func (p *Progressbar) start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			err := ctx.Err()
-			if err != nil && err != context.Canceled {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				p.err = err
 			}
+
 			return
 		case num := <-p.increments:
 			p.currentNum += num
@@ -104,6 +110,7 @@ func (p *Progressbar) start(ctx context.Context) {
 			err := p.render(frame, p.io.Width-labelWidth, p.now())
 			if err != nil {
 				p.err = fmt.Errorf("redraw: %w", err)
+
 				return
 			}
 			frame.WriteByte('\n')
@@ -111,6 +118,7 @@ func (p *Progressbar) start(ctx context.Context) {
 			_, err = frame.WriteTo(p.io)
 			if err != nil {
 				p.err = fmt.Errorf("redraw: %w", err)
+
 				return
 			}
 			running = true
@@ -131,6 +139,7 @@ func (p *Progressbar) stop() error {
 	if err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
+
 	return nil
 }
 
@@ -152,6 +161,7 @@ func (p *progressState) isDone() bool {
 	if p.maxNum <= 0 {
 		return false
 	}
+
 	return p.currentNum >= p.maxNum
 }
 
@@ -184,7 +194,7 @@ func (p *progressState) render(frame *bytes.Buffer, width int, now time.Time) er
 		if p.fmtRate == nil {
 			p.fmtRate = func(f float64) string { return fmt.Sprintf("%.2f", f) }
 		}
-		part := fmt.Sprintf("%s/s", p.fmtRate(rollingRate))
+		part := p.fmtRate(rollingRate) + "/s"
 		right = append(right, part)
 		rightPad += len(part) + 2 // `, `
 	}
@@ -209,6 +219,7 @@ func (p *progressState) render(frame *bytes.Buffer, width int, now time.Time) er
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -218,6 +229,7 @@ func (p *progressState) remainingTime(rollingRate float64) string {
 	if rollingRate > 0 {
 		return fmt.Sprintf("%s remaining", remainingTime)
 	}
+
 	return ""
 }
 
@@ -227,7 +239,7 @@ func (p *progressState) filledBarLine(width int, completion float64) string {
 		filledWidth = width
 	}
 	bar := "["
-	for i := 0; i < width; i++ {
+	for i := range width {
 		if i < filledWidth {
 			bar += "="
 		} else if i == filledWidth {
@@ -237,6 +249,7 @@ func (p *progressState) filledBarLine(width int, completion float64) string {
 		}
 	}
 	bar += "]"
+
 	return bar
 }
 
@@ -248,6 +261,7 @@ func (p *progressState) rollingRate() float64 {
 	for _, rate := range p.rollingRates {
 		sum += rate
 	}
+
 	return sum / float64(len(p.rollingRates))
 }
 
@@ -278,6 +292,7 @@ func NewFileProgressReader(r io.Reader, label string, opts ...opt) (*wrapReader,
 	p.label = label
 	p.startedAt = p.now()
 	go p.start(p.ctx)
+
 	return wrap, nil
 }
 
@@ -289,7 +304,7 @@ type sized interface {
 	Size() int64
 }
 
-var errNoSize = fmt.Errorf("unable to determine size of reader")
+var errNoSize = errors.New("unable to determine size of reader")
 
 type wrapReader struct {
 	r io.Reader
@@ -303,12 +318,14 @@ func (w *wrapReader) Size() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		return fi.Size(), nil
 	}
 	s, ok := w.r.(sized)
 	if ok {
 		return s.Size(), nil
 	}
+
 	return 0, errNoSize
 }
 
@@ -320,6 +337,7 @@ func (w *wrapReader) Read(p []byte) (n int, err error) {
 	if err == io.EOF {
 		w.p.cancel()
 	}
+
 	return n, err
 }
 
@@ -332,5 +350,6 @@ func (w *wrapReader) Close() error {
 	if ok {
 		return closer.Close()
 	}
+
 	return nil
 }

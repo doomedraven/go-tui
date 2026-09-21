@@ -13,7 +13,7 @@ import (
 )
 
 func chainIOforTest(t *testing.T, width, height int) (*chanIO, *writeC) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	realOut := newWriteC(ctx)
 	cio := newUnstartedIO(ctx, width, height)
 	go cio.handleViewports(ctx)
@@ -24,6 +24,7 @@ func chainIOforTest(t *testing.T, width, height int) (*chanIO, *writeC) {
 		close(cio.Out)
 		close(realOut.C)
 	})
+
 	return cio, realOut
 }
 
@@ -42,7 +43,7 @@ func TestChanIO_Forward(t *testing.T) {
 
 	// and have the previous two lines still rendered
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rd           \n\re           \n\rf           ",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rd           \n\re           \n\rf           ",
 		<-stdout.C)
 
 	ticks := make(chan time.Time)
@@ -61,6 +62,7 @@ func TestChanIO_Forward(t *testing.T) {
 		WithContext(cio.ctx),
 		spinnersOpt(func(s *Spinners) error {
 			s.ticks = ticks
+
 			return nil
 		}),
 	)
@@ -70,13 +72,13 @@ func TestChanIO_Forward(t *testing.T) {
 	tick()
 
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rf           ",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rf           ",
 		<-stdout.C)
 
 	// write one more line
 	fmt.Fprint(cio, "g\n")
 
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rg           ",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\r\r... s: A   \n\r\r           \n\rg           ",
 		<-stdout.C)
 }

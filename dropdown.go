@@ -72,7 +72,8 @@ func Confirm(action string, opts ...opt) bool {
 	if err != nil {
 		return false
 	}
-	return strings.ToLower(res) == "yes"
+
+	return strings.EqualFold(res, "yes")
 }
 
 var ErrNoItems = errors.New("no items provided")
@@ -105,6 +106,7 @@ func DropdownKV[K comparable, V any](label string, items map[K]V, opts ...opt) (
 	if err != nil {
 		return zeroK, zeroV, err
 	}
+
 	return item.Key, item.Value, nil
 }
 
@@ -175,6 +177,7 @@ func DropdownLazy[V any](label string, itemFn iter.Seq2[V, error], o ...opt) (V,
 		}
 		buf.WriteTo(d.out)
 	}
+
 	return item.(V), nil
 }
 
@@ -212,6 +215,7 @@ func DropdownIndex(label string, items []any, o ...opt) (int, error) {
 		}
 		buf.WriteTo(d.out)
 	}
+
 	return i, nil
 }
 
@@ -233,6 +237,7 @@ func dropdownOpt(o func(d *dropdown) error) opt {
 		if !ok {
 			return fmt.Errorf("need a dropdown, got %v", a)
 		}
+
 		return o(d)
 	}
 }
@@ -240,6 +245,7 @@ func dropdownOpt(o func(d *dropdown) error) opt {
 func WithOneReturn() opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.OneReturn = true
+
 		return nil
 	})
 }
@@ -247,6 +253,7 @@ func WithOneReturn() opt {
 func WithHide() opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.Hide = true
+
 		return nil
 	})
 }
@@ -254,6 +261,7 @@ func WithHide() opt {
 func WithLabelTemplate(tmpl string) opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.LabelTemplate = tmpl
+
 		return nil
 	})
 }
@@ -261,6 +269,7 @@ func WithLabelTemplate(tmpl string) opt {
 func WithActiveItemTemplate(tmpl string) opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.ActiveItemTemplate = tmpl
+
 		return nil
 	})
 }
@@ -268,6 +277,7 @@ func WithActiveItemTemplate(tmpl string) opt {
 func WithInactiveItemTemplate(tmpl string) opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.InactiveItemTemplate = tmpl
+
 		return nil
 	})
 }
@@ -275,6 +285,7 @@ func WithInactiveItemTemplate(tmpl string) opt {
 func WithMoreItemsTemplate(tmpl string) opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.MoreItemsTemplate = tmpl
+
 		return nil
 	})
 }
@@ -282,6 +293,7 @@ func WithMoreItemsTemplate(tmpl string) opt {
 func WithAnswerTemplate(tmpl string) opt {
 	return dropdownOpt(func(d *dropdown) error {
 		d.AnswerTemplate = tmpl
+
 		return nil
 	})
 }
@@ -300,6 +312,7 @@ func newDropdown() (*dropdown, error) {
 		AnswerTemplate:       DefaultAnswerTemplate,
 		IterBatchSize:        10,
 	}
+
 	return d, nil
 }
 
@@ -329,6 +342,7 @@ func (d *dropdown) parseTemplates() error {
 	if err != nil {
 		return fmt.Errorf("answer: %w", err)
 	}
+
 	return nil
 }
 
@@ -336,15 +350,16 @@ func mustEndWith(base string, r byte) string {
 	if base[len(base)-1] != r {
 		base += string(r)
 	}
+
 	return base
 }
 
-// implements [withIO]
+// implements [withIO].
 func (d *dropdown) setReader(r io.Reader) {
 	d.in = r
 }
 
-// implements [withIO]
+// implements [withIO].
 func (d *dropdown) setWriter(w io.Writer) {
 	tui, ok := w.(*Tui)
 	if ok {
@@ -356,12 +371,12 @@ func (d *dropdown) setWriter(w io.Writer) {
 	d.out = w
 }
 
-// implements [withContext]
+// implements [withContext].
 func (d *dropdown) setContext(ctx context.Context) {
 	d.Ctx = ctx
 }
 
-// implements [withContext]
+// implements [withContext].
 func (d *dropdown) getContext() context.Context {
 	return d.Ctx
 }
@@ -374,10 +389,11 @@ func (d *dropdown) setItem(i int, item any) error {
 	d.trie.Add(d.inactive[i].String(), i)
 	d.widths[i] = width(d.inactive[i])
 	d.relevant[i] = i
+
 	return nil
 }
 
-// render displays the dropdown
+// render displays the dropdown.
 func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
 	var prefix int
@@ -464,6 +480,7 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 		buf.WriteByte('\n')
 	}
 	buf.WriteByte('\r')
+
 	return nil
 }
 
@@ -481,6 +498,7 @@ func (d *dropdown) height(io *termIO) int {
 	if d.LabelNewLine {
 		height++ // label wrapped
 	}
+
 	return height
 }
 
@@ -511,11 +529,13 @@ func (d *dropdown) run() (int, error) {
 			if !more {
 				d.iterDone = true
 				d.itItems = nil
+
 				continue
 			}
 			if it.err != nil {
 				io.clear(space, frame)
 				frame.WriteTo(io)
+
 				return -1, it.err
 			}
 			d.Items = append(d.Items, it.item)
@@ -532,10 +552,12 @@ func (d *dropdown) run() (int, error) {
 			// }
 			io.clear(io.Height, frame)
 			frame.WriteTo(io)
+
 			continue
 		case <-d.Ctx.Done():
 			io.clear(space, frame)
 			frame.WriteTo(io)
+
 			return -1, d.Ctx.Err()
 		default:
 			// if d.itItems != nil && len(d.Items) < io.Height && !d.iterDone {
@@ -554,6 +576,7 @@ func (d *dropdown) run() (int, error) {
 			switch key {
 			case keyEnter:
 				frame.WriteTo(io)
+
 				return d.offset + d.selected, nil
 			case '↑':
 				if d.offset > 0 && d.selected == 0 { // page up

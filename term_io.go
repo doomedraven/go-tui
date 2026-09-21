@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,7 +28,7 @@ type termIO struct {
 	bm1, bm2 byte
 }
 
-var ErrNoTTY = fmt.Errorf("no tty")
+var ErrNoTTY = errors.New("no tty")
 
 func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 	stderr, isOutFD := out.(descriptor)
@@ -44,6 +45,7 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 		if err != nil {
 			return nil, fmt.Errorf("viewport: %w", err)
 		}
+
 		return &termIO{
 			in:     in,
 			out:    out,
@@ -64,6 +66,7 @@ func makeTermIO(in io.Reader, out io.Writer) (*termIO, error) {
 	if err != nil {
 		return nil, fmt.Errorf("raw: %w", err)
 	}
+
 	return &termIO{
 		in:     in,
 		out:    out,
@@ -83,6 +86,7 @@ func (t *termIO) Write(p []byte) (n int, err error) {
 	if t.vp != nil {
 		return t.vp.Write(p)
 	}
+
 	return t.out.Write(p)
 }
 
@@ -91,13 +95,14 @@ func (t *termIO) clear(space int, buf io.Writer) error {
 		if t.vp.fixedHeight {
 			return t.vp.WriteByte('\r')
 		}
+
 		return nil // screen clearing is handled by [chanIO.forwardTo]
 	}
 	// use buffer to write to io only once
 	// Move cursor up to the beginning of the dropdown
 	fmt.Fprintf(buf, "\x1b[%dA", space)
 	// Clear each line
-	for i := 0; i < space; i++ {
+	for i := range space {
 		fmt.Fprint(buf, "\r")     // return to start of line
 		fmt.Fprint(buf, "\x1b[K") // clear current line
 		if i < space-1 {
@@ -108,6 +113,7 @@ func (t *termIO) clear(space int, buf io.Writer) error {
 	if space > 1 {
 		fmt.Fprintf(buf, "\x1b[%dA\r", space-1)
 	}
+
 	return nil
 }
 
@@ -117,7 +123,7 @@ const (
 	keyEnter = 0x0d
 )
 
-var ErrUnknownRune = fmt.Errorf("unknown rune")
+var ErrUnknownRune = errors.New("unknown rune")
 
 func (t *termIO) ReadKey() (rune, error) {
 	buf := make([]byte, 1)
@@ -138,7 +144,7 @@ func (t *termIO) ReadKey() (rune, error) {
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
 	n, err := t.Read(buf) // todo: fixme
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return keyCtrlD, io.EOF
 	}
 	if n >= 3 && buf[0] == 0x1b && buf[1] == 0x5b {
@@ -171,5 +177,6 @@ func isTerminal() bool {
 // see https://stackoverflow.com/a/37014283/277035
 func isPrintable(r rune) bool {
 	isSurrogate := r >= 0xd800 && r <= 0xdbff
+
 	return r >= 32 && !isSurrogate
 }

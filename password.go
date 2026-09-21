@@ -58,6 +58,7 @@ func Password(label string, option ...opt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return p.run()
 }
 
@@ -103,6 +104,7 @@ func (p *password) run() (string, error) {
 			switch key {
 			case keyEnter:
 				frame.WriteTo(io)
+
 				return string(p.typed), nil
 			case 0x7f: // backspace
 				if len(p.typed) > 0 {
@@ -126,5 +128,6 @@ func (p *password) parseTemplates() (err error) {
 	if err != nil {
 		return fmt.Errorf("answer: %w", err)
 	}
+
 	return nil
 }

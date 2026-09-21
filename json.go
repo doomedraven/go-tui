@@ -39,7 +39,7 @@ var valDepthShades = []string{ // shades of green
 	"\x1b[38;5;22m",
 }
 
-// PrettyJSON pretty-prints JSON data with depth-aware coloring
+// PrettyJSON pretty-prints JSON data with depth-aware coloring.
 func PrettyJSON(w io.Writer, src any) error {
 	var identBuf, outBuf bytes.Buffer
 	var err error
@@ -70,10 +70,12 @@ func PrettyJSON(w io.Writer, src any) error {
 		if curr == jsonEscape {
 			outBuf.WriteByte(ch)
 			stack = stack[:len(stack)-1]
+
 			continue
 		}
 		if ch != '"' && curr == jsonQuoted {
 			outBuf.WriteByte(ch)
+
 			continue
 		}
 		switch ch {
@@ -136,6 +138,7 @@ func PrettyJSON(w io.Writer, src any) error {
 	}
 	outBuf.WriteByte('\n')
 	outBuf.WriteTo(w)
+
 	return nil
 }
 
@@ -143,5 +146,6 @@ func abs(n int) int {
 	if n < 0 {
 		return -n
 	}
+
 	return n
 }

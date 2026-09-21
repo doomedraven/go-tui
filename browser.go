@@ -10,7 +10,7 @@ import (
 	"runtime"
 )
 
-// Browserf opens the specified URL in the default browser
+// Browserf opens the specified URL in the default browser.
 func Browserf(addr string, args ...any) error {
 	var cmd *exec.Cmd
 	for i := range args {
@@ -29,5 +29,6 @@ func Browserf(addr string, args ...any) error {
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
+
 	return cmd.Start()
 }

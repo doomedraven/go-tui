@@ -17,6 +17,7 @@ func WithDefault(d string) opt {
 	return inputOpt(func(p *input) error {
 		p.typed = d
 		p.cursor = len(d)
+
 		return nil
 	})
 }
@@ -27,6 +28,7 @@ func inputOpt(o func(d *input) error) opt {
 		if !ok {
 			return fmt.Errorf("need a input, got %v", a)
 		}
+
 		return o(d)
 	}
 }
@@ -75,6 +77,7 @@ func Input(label string, option ...opt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return p.run()
 }
 
@@ -118,6 +121,7 @@ func (p *input) run() (string, error) {
 			switch key {
 			case keyEnter:
 				frame.WriteTo(io)
+
 				return string(p.typed), nil
 			case 0x7f: // backspace
 				if len(p.typed) > 0 {
@@ -153,5 +157,6 @@ func (p *input) parseTemplates() (err error) {
 	if err != nil {
 		return fmt.Errorf("answer: %w", err)
 	}
+
 	return nil
 }
