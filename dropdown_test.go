@@ -192,22 +192,22 @@ func otherDropdownForTest(t *testing.T) (in, out chan string, result chan string
 
 func TestDropdownFiltering(t *testing.T) {
 	in, out, res := otherDropdownForTest(t)
-	assert.Equal(t, "\rNeque porro \n\r+ Lorem ip…\n\r- dolor si…\n\r~ 3 of 5 more\n\r", <-out)
+	assert.Equal(t, "\rNeque porro \n\r+ Lorem i…\n\r- dolor s…\n\r~ 3 of 5 more\n\r", <-out)
 	in <- "c"
 	assert.Equal(t,
-		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ condimen…\n\r",
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ condime…\n\r",
 		<-out)
 	in <- "\x7f" // backspace
 	assert.Equal(t,
-		"\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\rNeque porro \n\r+ Lorem ip…\n\r- dolor si…\n\r~ 3 of 5 more\n\r",
+		"\x1b[2A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1A\r\rNeque porro \n\r+ Lorem i…\n\r- dolor s…\n\r~ 3 of 5 more\n\r",
 		<-out)
 	in <- "l"
 	assert.Equal(t,
-		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ Lorem ip…\n\r- condimen…\n\r",
+		"\x1b[4A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[3A\r\rNeque porro \n\r+ Lorem i…\n\r- condime…\n\r",
 		<-out)
 	in <- "\x1b\x5b\x42" // down
 	assert.Equal(t,
-		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r\rNeque porro \n\r- Lorem ip…\n\r+ condimen…\n\r",
+		"\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r\rNeque porro \n\r- Lorem i…\n\r+ condime…\n\r",
 		<-out)
 	in <- "\x0d" // enter
 	assert.Equal(t, "\x1b[3A\r\x1b[K\x1b[1B\r\x1b[K\x1b[1B\r\x1b[K\x1b[2A\r", <-out)

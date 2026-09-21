@@ -32,7 +32,7 @@ func width(chunk []byte) int {
 }
 
 func truncateVisible(chunk []byte, maxLen int, tailer byte) (out []byte) {
-	out = []byte(truncateAscii(string(chunk), maxLen))
+	out = []byte(truncateAscii(string(chunk), maxLen-1))
 	if out[len(out)-1] != tailer {
 		out = append(out, tailer)
 	}
