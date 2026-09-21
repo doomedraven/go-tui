@@ -90,34 +90,6 @@ func (t *termIO) Write(p []byte) (n int, err error) {
 	return t.out.Write(p)
 }
 
-//nolint:errcheck // TODO: improve error handling
-func (t *termIO) clear(space int, buf io.Writer) error {
-	if t.vp != nil {
-		if t.vp.fixedHeight {
-			return t.vp.WriteByte('\r')
-		}
-
-		return nil // screen clearing is handled by [chanIO.forwardTo]
-	}
-	// use buffer to write to io only once
-	// Move cursor up to the beginning of the dropdown
-	fmt.Fprintf(buf, "\x1b[%dA", space)
-	// Clear each line
-	for i := range space {
-		fmt.Fprint(buf, "\r")     // return to start of line
-		fmt.Fprint(buf, "\x1b[K") // clear current line
-		if i < space-1 {
-			fmt.Fprint(buf, "\x1b[1B") // move cursor down if not last line
-		}
-	}
-	// Move cursor back up to the beginning and to the start of the line
-	if space > 1 {
-		fmt.Fprintf(buf, "\x1b[%dA\r", space-1)
-	}
-
-	return nil
-}
-
 const (
 	keyCtrlC = 0x03
 	keyCtrlD = 0x04
@@ -183,6 +155,34 @@ func (t *termIO) maybeKnownRune(buf []byte) (rune, bool) {
 	default:
 		return 0, false
 	}
+}
+
+//nolint:errcheck // TODO: improve error handling
+func (t *termIO) clear(space int, buf io.Writer) error {
+	if t.vp != nil {
+		if t.vp.fixedHeight {
+			return t.vp.WriteByte('\r')
+		}
+
+		return nil // screen clearing is handled by [chanIO.forwardTo]
+	}
+	// use buffer to write to io only once
+	// Move cursor up to the beginning of the dropdown
+	fmt.Fprintf(buf, "\x1b[%dA", space)
+	// Clear each line
+	for i := range space {
+		fmt.Fprint(buf, "\r")     // return to start of line
+		fmt.Fprint(buf, "\x1b[K") // clear current line
+		if i < space-1 {
+			fmt.Fprint(buf, "\x1b[1B") // move cursor down if not last line
+		}
+	}
+	// Move cursor back up to the beginning and to the start of the line
+	if space > 1 {
+		fmt.Fprintf(buf, "\x1b[%dA\r", space-1)
+	}
+
+	return nil
 }
 
 func isTerminal() bool {

@@ -48,28 +48,6 @@ func initViewport(ctx context.Context, notify chan viewportChanged, width, heigh
 	return v
 }
 
-func (v *viewport) combinedHeight() int {
-	var n int
-	curr := v
-	for curr != nil {
-		n += curr.height
-		curr = curr.next
-	}
-
-	return n
-}
-
-func (v *viewport) numLines() int {
-	var n int
-	curr := v
-	for curr != nil {
-		n += len(curr.lines)
-		curr = curr.next
-	}
-
-	return n
-}
-
 func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	var total int64
 	curr := v
@@ -105,6 +83,46 @@ func (v *viewport) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	return total, nil
+}
+
+func (v *viewport) WriteByte(b byte) error {
+	_, err := v.Write([]byte{b})
+
+	return err
+}
+
+// see https://notes.burke.libbey.me/ansi-escape-codes/
+// see https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+func (v *viewport) Write(chunk []byte) (n int, err error) {
+	select {
+	case <-v.ctx.Done():
+		return 0, io.EOF
+	// [viewport.loop] will handle the write
+	case v.inner <- chunk:
+		return len(chunk), nil
+	}
+}
+
+func (v *viewport) combinedHeight() int {
+	var n int
+	curr := v
+	for curr != nil {
+		n += curr.height
+		curr = curr.next
+	}
+
+	return n
+}
+
+func (v *viewport) numLines() int {
+	var n int
+	curr := v
+	for curr != nil {
+		n += len(curr.lines)
+		curr = curr.next
+	}
+
+	return n
 }
 
 // writeTo writes the viewport to the given writer, called from [viewport.loop], which
@@ -153,24 +171,6 @@ func (v *viewport) padded(chunk []byte, lo, mid int) (int, int) {
 	lo = mid
 
 	return lo, mid
-}
-
-func (v *viewport) WriteByte(b byte) error {
-	_, err := v.Write([]byte{b})
-
-	return err
-}
-
-// see https://notes.burke.libbey.me/ansi-escape-codes/
-// see https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-func (v *viewport) Write(chunk []byte) (n int, err error) {
-	select {
-	case <-v.ctx.Done():
-		return 0, io.EOF
-	// [viewport.loop] will handle the write
-	case v.inner <- chunk:
-		return len(chunk), nil
-	}
 }
 
 func (v *viewport) appendToLinebuffer(chunk []byte) int {

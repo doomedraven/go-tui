@@ -18,6 +18,20 @@ func ShouldPasteFromClipboard() string {
 	return content
 }
 
+func (cr *clipboard) Read() (string, error) {
+	cmd, err := cr.pasteCommand()
+	if err != nil {
+		return "", fmt.Errorf("paste command: %w", err)
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("run: %w", err)
+	}
+	content := strings.TrimRight(string(output), "\n\r")
+
+	return content, nil
+}
+
 var clipboardPasteImplementations = map[string][][]string{
 	"darwin": {
 		{"pbpaste"},
@@ -47,18 +61,4 @@ func (cr *clipboard) pasteCommand() (*exec.Cmd, error) {
 	}
 
 	return nil, fmt.Errorf("%w: no clipboard paste utility found", ErrUnsupportedPlatform)
-}
-
-func (cr *clipboard) Read() (string, error) {
-	cmd, err := cr.pasteCommand()
-	if err != nil {
-		return "", fmt.Errorf("paste command: %w", err)
-	}
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("run: %w", err)
-	}
-	content := strings.TrimRight(string(output), "\n\r")
-
-	return content, nil
 }

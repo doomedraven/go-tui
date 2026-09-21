@@ -9,6 +9,12 @@ import (
 	"os"
 )
 
+type Tui struct {
+	opts
+	*termIO // exposes io.ReadWriter
+	ctx     context.Context
+}
+
 func NewTUI(ctx context.Context, opts ...opt) (*Tui, error) {
 	cio, err := NewIO(ctx)
 	if err != nil {
@@ -24,12 +30,6 @@ func NewTUI(ctx context.Context, opts ...opt) (*Tui, error) {
 		ctx:    ctx,
 		termIO: tio,
 	}, nil
-}
-
-type Tui struct {
-	opts
-	*termIO // exposes io.ReadWriter
-	ctx     context.Context
 }
 
 func (t *Tui) prependView() *viewport {

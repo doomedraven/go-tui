@@ -272,6 +272,21 @@ func (p *progressState) rollingRate() float64 {
 	return sum / float64(len(p.rollingRates))
 }
 
+type fileStat interface {
+	Stat() (os.FileInfo, error)
+}
+
+type sized interface {
+	Size() int64
+}
+
+var errNoSize = errors.New("unable to determine size of reader")
+
+type wrapReader struct {
+	r io.Reader
+	p *Progressbar
+}
+
 func NewFileProgressReader(r io.Reader, label string, opts ...opt) (*wrapReader, error) {
 	p := newProgressbar()
 	for _, o := range opts {
@@ -301,21 +316,6 @@ func NewFileProgressReader(r io.Reader, label string, opts ...opt) (*wrapReader,
 	go p.start(p.ctx)
 
 	return wrap, nil
-}
-
-type fileStat interface {
-	Stat() (os.FileInfo, error)
-}
-
-type sized interface {
-	Size() int64
-}
-
-var errNoSize = errors.New("unable to determine size of reader")
-
-type wrapReader struct {
-	r io.Reader
-	p *Progressbar
 }
 
 func (w *wrapReader) Size() (int64, error) {

@@ -87,6 +87,97 @@ func NewSpinners(opt ...opt) (*Spinners, error) {
 	return s, nil
 }
 
+func (s *Spinners) Close() {
+	s.cancel()
+}
+
+func (s *Spinners) MustAddBackground(opt ...opt) *Spinner {
+	spinner, err := s.Add(context.Background(), opt...)
+	if err != nil {
+		panic(err)
+	}
+
+	return spinner
+}
+
+func WithPrefixf(prefix string, args ...any) opt {
+	// TODO: decide if we expose text/template or fmt. This is a bit of a mess
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.prefix = fmt.Sprintf(prefix, args...)
+
+		return nil
+	}
+}
+
+// WithKeep will keep the spinner displayed after it's done.
+func WithKeep() opt {
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.keep = true
+
+		return nil
+	}
+}
+
+func WithFrames(frames []string) opt {
+	return func(a any) error {
+		cs, ok := a.(*createSpinner)
+		if !ok {
+			return nil
+		}
+		cs.frames = frames
+
+		return nil
+	}
+}
+
+func (s *Spinners) Add(ctx context.Context, opt ...opt) (*Spinner, error) {
+	// rewrap the context, so that we can cancel the spinner when
+	// we don't want to cancel the parent context.
+	ctx, cancel := context.WithCancel(ctx)
+	replyOffset := make(chan int)
+	req := createSpinner{
+		cancel:      cancel,
+		frames:      SpinnerStyleDocs,
+		replyOffset: replyOffset,
+	}
+	err := opts(opt).Apply(&req)
+	if err != nil {
+		return nil, err
+	}
+	defer close(replyOffset)
+	// when parent context is done, we can't create a spinner
+	select {
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case s.creates <- req:
+		select {
+		case <-s.ctx.Done(): // spinner group is done
+			return nil, s.ctx.Err()
+		case <-ctx.Done(): // what created this spinner is done
+			return nil, ctx.Err()
+		case offset := <-replyOffset:
+			// go close in background
+			spinner := &Spinner{
+				parent: s,
+				offset: offset,
+			}
+			go spinner.monitor(ctx)
+
+			return spinner, nil
+		}
+	}
+}
+
 func (s *Spinners) setContext(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 }
@@ -229,10 +320,6 @@ func (s *Spinners) redraw(prevActive int) int {
 	return currActive
 }
 
-func (s *Spinners) Close() {
-	s.cancel()
-}
-
 //nolint:errcheck // TODO: handle error
 func (s *Spinners) stop() {
 	// s.wg.Wait()
@@ -286,107 +373,9 @@ func (ss *spinnerState) next() {
 	ss.tick = (ss.tick + 1) % len(ss.frames)
 }
 
-func (s *Spinners) MustAddBackground(opt ...opt) *Spinner {
-	spinner, err := s.Add(context.Background(), opt...)
-	if err != nil {
-		panic(err)
-	}
-
-	return spinner
-}
-
-func WithPrefixf(prefix string, args ...any) opt {
-	// TODO: decide if we expose text/template or fmt. This is a bit of a mess
-	return func(a any) error {
-		cs, ok := a.(*createSpinner)
-		if !ok {
-			return nil
-		}
-		cs.prefix = fmt.Sprintf(prefix, args...)
-
-		return nil
-	}
-}
-
-// WithKeep will keep the spinner displayed after it's done.
-func WithKeep() opt {
-	return func(a any) error {
-		cs, ok := a.(*createSpinner)
-		if !ok {
-			return nil
-		}
-		cs.keep = true
-
-		return nil
-	}
-}
-
-func WithFrames(frames []string) opt {
-	return func(a any) error {
-		cs, ok := a.(*createSpinner)
-		if !ok {
-			return nil
-		}
-		cs.frames = frames
-
-		return nil
-	}
-}
-
-func (s *Spinners) Add(ctx context.Context, opt ...opt) (*Spinner, error) {
-	// rewrap the context, so that we can cancel the spinner when
-	// we don't want to cancel the parent context.
-	ctx, cancel := context.WithCancel(ctx)
-	replyOffset := make(chan int)
-	req := createSpinner{
-		cancel:      cancel,
-		frames:      SpinnerStyleDocs,
-		replyOffset: replyOffset,
-	}
-	err := opts(opt).Apply(&req)
-	if err != nil {
-		return nil, err
-	}
-	defer close(replyOffset)
-	// when parent context is done, we can't create a spinner
-	select {
-	case <-s.ctx.Done():
-		return nil, s.ctx.Err()
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case s.creates <- req:
-		select {
-		case <-s.ctx.Done(): // spinner group is done
-			return nil, s.ctx.Err()
-		case <-ctx.Done(): // what created this spinner is done
-			return nil, ctx.Err()
-		case offset := <-replyOffset:
-			// go close in background
-			spinner := &Spinner{
-				parent: s,
-				offset: offset,
-			}
-			go spinner.monitor(ctx)
-
-			return spinner, nil
-		}
-	}
-}
-
 type Spinner struct {
 	parent *Spinners
 	offset int
-}
-
-//nolint:errcheck // TODO: handle error
-func (s *Spinner) monitor(ctx context.Context) {
-	defer s.Close() // we send the stop to the parent with the offset
-	select {        // whether parent or self context is done
-	case <-s.parent.ctx.Done():
-		return // all spinners are done
-	case <-ctx.Done():
-		return // what created spinner is done
-	}
 }
 
 // Close will stop the spinner and remove it from display if it's not kept.
@@ -407,4 +396,15 @@ func (s *Spinner) Updatef(format string, args ...any) {
 // Fail will stop the spinner and display an error message.
 func (s *Spinner) Fail(err error) {
 	s.parent.updateOffset(s.offset, "", err)
+}
+
+//nolint:errcheck // TODO: handle error
+func (s *Spinner) monitor(ctx context.Context) {
+	defer s.Close() // we send the stop to the parent with the offset
+	select {        // whether parent or self context is done
+	case <-s.parent.ctx.Done():
+		return // all spinners are done
+	case <-ctx.Done():
+		return // what created spinner is done
+	}
 }

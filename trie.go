@@ -83,18 +83,6 @@ func (t *trie) Prefix(prefix string) []int {
 	return slices.Compact(out)
 }
 
-func (t *trie) dfs(s string) []string {
-	var out []string
-	if len(t.idx) > 0 {
-		out = append(out, s)
-	}
-	for k, v := range t.m {
-		out = append(out, v.dfs(s+string(k))...)
-	}
-
-	return out
-}
-
 func (t *trie) Words() (out []string) {
 	words := t.dfs("")
 	sort.Strings(words)
@@ -116,4 +104,16 @@ func (t *trie) Indexes() (out []int) {
 	sort.Ints(out)
 
 	return
+}
+
+func (t *trie) dfs(s string) []string {
+	var out []string
+	if len(t.idx) > 0 {
+		out = append(out, s)
+	}
+	for k, v := range t.m {
+		out = append(out, v.dfs(s+string(k))...)
+	}
+
+	return out
 }

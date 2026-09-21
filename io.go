@@ -51,6 +51,19 @@ func newUnstartedIO(ctx context.Context, width, height int) *chanIO {
 	return cio
 }
 
+// implements [io.ReadWriter].
+type chanIO struct {
+	In  chan string
+	Out chan string
+
+	ctx context.Context
+
+	width, height int
+	head, tail    *viewport
+	vreply        chan chan *viewport
+	notify        chan viewportChanged
+}
+
 func NewIO(ctx context.Context) (*chanIO, error) {
 	w, h, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
@@ -63,17 +76,32 @@ func NewIO(ctx context.Context) (*chanIO, error) {
 	return cio, nil
 }
 
-// implements [io.ReadWriter].
-type chanIO struct {
-	In  chan string
-	Out chan string
+func (i *chanIO) Read(p []byte) (n int, err error) {
+	select {
+	case <-i.ctx.Done():
+		return 0, io.EOF
+	case res, ok := <-i.In:
+		if !ok {
+			return 0, io.EOF
+		}
+		copy(p, res)
 
-	ctx context.Context
+		return len(res), nil
+	}
+}
 
-	width, height int
-	head, tail    *viewport
-	vreply        chan chan *viewport
-	notify        chan viewportChanged
+func (i *chanIO) Write(p []byte) (n int, err error) {
+	select { // don't send on a closed channel
+	case <-i.ctx.Done():
+		return 0, io.EOF
+	default:
+	}
+	select {
+	case <-i.ctx.Done():
+		return 0, io.EOF
+	case i.Out <- string(p):
+		return len(p), nil
+	}
 }
 
 func (i *chanIO) pushViewport() (*viewport, error) {
@@ -158,34 +186,6 @@ func (i *chanIO) forwardTo(ctx context.Context, w io.Writer) {
 			w.Write(x[:len(x)-1]) //nolint:errcheck // trim last newline
 			// _, _ = buf.WriteTo(w)
 		}
-	}
-}
-
-func (i *chanIO) Read(p []byte) (n int, err error) {
-	select {
-	case <-i.ctx.Done():
-		return 0, io.EOF
-	case res, ok := <-i.In:
-		if !ok {
-			return 0, io.EOF
-		}
-		copy(p, res)
-
-		return len(res), nil
-	}
-}
-
-func (i *chanIO) Write(p []byte) (n int, err error) {
-	select { // don't send on a closed channel
-	case <-i.ctx.Done():
-		return 0, io.EOF
-	default:
-	}
-	select {
-	case <-i.ctx.Done():
-		return 0, io.EOF
-	case i.Out <- string(p):
-		return len(p), nil
 	}
 }
 
