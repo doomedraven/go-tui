@@ -41,7 +41,7 @@ var valDepthShades = []string{ // shades of green
 
 // PrettyJSON pretty-prints JSON data with depth-aware coloring.
 func PrettyJSON(w io.Writer, src any) error {
-	var identBuf, outBuf bytes.Buffer
+	identBuf, outBuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
 	var err error
 	var toIndent []byte
 	switch src := src.(type) {
@@ -56,90 +56,144 @@ func PrettyJSON(w io.Writer, src any) error {
 		}
 	}
 	// standard library already indents JSON data, so we're only coloring things here.
-	err = json.Indent(&identBuf, toIndent, "", "  ")
+	err = json.Indent(identBuf, toIndent, "", "  ")
 	if err != nil {
 		return fmt.Errorf("indent: %w", err)
 	}
+	prettyJsonRecolor(identBuf, outBuf)
+	_, err = outBuf.WriteTo(w)
+
+	return err
+}
+
+func prettyJsonRecolor(identBuf, w *bytes.Buffer) {
 	pretty := identBuf.Bytes()
 	stack := []jsonState{jsonRoot}
 	lo, hi, depth := 0, identBuf.Len(), -1
 	for lo < hi {
 		ch := pretty[lo]
 		lo++
-		curr := stack[len(stack)-1]
-		if curr == jsonEscape {
-			outBuf.WriteByte(ch)
-			stack = stack[:len(stack)-1]
-
-			continue
-		}
-		if ch != '"' && curr == jsonQuoted {
-			outBuf.WriteByte(ch)
-
-			continue
-		}
-		switch ch {
-		case '{':
-			depth++
-			stack = append(stack, jsonObject)
-			outBuf.WriteString(bold)
-			outBuf.WriteByte(ch)
-			outBuf.WriteString(reset)
-		case '[':
-			depth++
-			stack = append(stack, jsonArray)
-			outBuf.WriteString(bold)
-			outBuf.WriteByte(ch)
-			outBuf.WriteString(reset)
-		case '}', ']':
-			depth--
-			stack = stack[:len(stack)-1]
-			outBuf.WriteString(bold)
-			outBuf.WriteByte(ch)
-			outBuf.WriteString(reset)
-		case ':':
-			if curr == jsonObject {
-				stack = append(stack, jsonValue)
-			}
-			outBuf.WriteByte(ch)
-		case ',':
-			if curr == jsonValue {
-				stack = stack[:len(stack)-1]
-			}
-			outBuf.WriteByte(ch)
-		case '\\':
-			stack = append(stack, jsonEscape)
-			outBuf.WriteByte(ch)
-		case '"':
-			if curr == jsonObject { // open key
-				outBuf.WriteString(keyDepthShades[abs(depth)%len(keyDepthShades)])
-				outBuf.WriteString(bold)
-				outBuf.WriteByte(ch)
-				stack = append(stack, jsonQuoted)
-			} else if jsonQuoted == curr { // close key
-				outBuf.WriteByte(ch)
-				outBuf.WriteString(reset)
-				stack = stack[:len(stack)-1]
-			} else if jsonArray == curr { // open const
-				outBuf.WriteString(valDepthShades[abs(depth)%len(valDepthShades)])
-				outBuf.WriteByte(ch)
-				stack = append(stack, jsonQuoted)
-			} else if jsonValue == curr { // open const
-				outBuf.WriteString(valDepthShades[abs(depth)%len(valDepthShades)])
-				outBuf.WriteByte(ch)
-				stack = stack[:len(stack)-1]
-				stack = append(stack, jsonQuoted)
-			} else {
-				outBuf.WriteByte(ch)
-			}
-		default:
-			outBuf.WriteByte(ch)
-		}
+		depth, stack = prettyJsonLoop(stack, w, ch, depth)
 	}
-	outBuf.WriteByte('\n')
-	outBuf.WriteTo(w)
+	w.WriteByte('\n')
+}
 
-	return nil
+func prettyJsonLoop(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (int, []jsonState) {
+	curr := stack[len(stack)-1]
+	if curr == jsonEscape {
+		w.WriteByte(ch)
+		stack = stack[:len(stack)-1]
+
+		return depth, stack
+	}
+	if ch != '"' && curr == jsonQuoted {
+		w.WriteByte(ch)
+
+		return depth, stack
+	}
+
+	return prettyJsonChar(stack, w, ch, depth)
+}
+
+func prettyJsonChar(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (int, []jsonState) {
+	switch ch {
+	case '{':
+		depth, stack = prettyJsonOpenObject(stack, w, ch, depth)
+	case '[':
+		depth, stack = prettyJsonOpenArray(stack, w, ch, depth)
+	case '}', ']':
+		depth, stack = prettyJsonClose(stack, w, ch, depth)
+	case ':':
+		stack = prettyJsonColon(stack, w, ch)
+	case ',':
+		stack = prettyJsonComma(stack, w, ch)
+	case '\\':
+		stack = pretttJsonBackslash(stack, w, ch)
+	case '"':
+		stack = prettyJsonQuote(stack, w, ch, depth)
+	default:
+		w.WriteByte(ch)
+	}
+
+	return depth, stack
+}
+
+func prettyJsonOpenObject(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (int, []jsonState) {
+	depth++
+	stack = append(stack, jsonObject)
+	w.WriteString(bold)
+	w.WriteByte(ch)
+	w.WriteString(reset)
+	return depth, stack
+}
+
+func prettyJsonOpenArray(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (int, []jsonState) {
+	depth++
+	stack = append(stack, jsonArray)
+	w.WriteString(bold)
+	w.WriteByte(ch)
+	w.WriteString(reset)
+	return depth, stack
+}
+
+func prettyJsonClose(stack []jsonState, w *bytes.Buffer, ch byte, depth int) (int, []jsonState) {
+	depth--
+	stack = stack[:len(stack)-1]
+	w.WriteString(bold)
+	w.WriteByte(ch)
+	w.WriteString(reset)
+	return depth, stack
+}
+
+func prettyJsonColon(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
+	curr := stack[len(stack)-1]
+	if curr == jsonObject {
+		stack = append(stack, jsonValue)
+	}
+	w.WriteByte(ch)
+	return stack
+}
+
+func prettyJsonComma(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
+	curr := stack[len(stack)-1]
+	if curr == jsonValue {
+		stack = stack[:len(stack)-1]
+	}
+	w.WriteByte(ch)
+	return stack
+}
+
+func pretttJsonBackslash(stack []jsonState, w *bytes.Buffer, ch byte) []jsonState {
+	stack = append(stack, jsonEscape)
+	w.WriteByte(ch)
+	return stack
+}
+
+func prettyJsonQuote(stack []jsonState, w *bytes.Buffer, ch byte, depth int) []jsonState {
+	curr := stack[len(stack)-1]
+	switch curr {
+	case jsonObject: // open key
+		w.WriteString(keyDepthShades[abs(depth)%len(keyDepthShades)])
+		w.WriteString(bold)
+		w.WriteByte(ch)
+		stack = append(stack, jsonQuoted)
+	case jsonQuoted: // close key
+		w.WriteByte(ch)
+		w.WriteString(reset)
+		stack = stack[:len(stack)-1]
+	case jsonArray: // open const
+		w.WriteString(valDepthShades[abs(depth)%len(valDepthShades)])
+		w.WriteByte(ch)
+		stack = append(stack, jsonQuoted)
+	case jsonValue: // open const
+		w.WriteString(valDepthShades[abs(depth)%len(valDepthShades)])
+		w.WriteByte(ch)
+		stack = stack[:len(stack)-1]
+		stack = append(stack, jsonQuoted)
+	default:
+		w.WriteByte(ch)
+	}
+	return stack
 }
 
 func abs(n int) int {

@@ -186,14 +186,7 @@ func (v *viewport) appendToLinebuffer(chunk []byte) int {
 		}
 		// TODO: skip \r as well
 		if printed > 0 && printed%v.width == 0 {
-			if lo < mid {
-				tmp := make([]byte, mid-lo+1)
-				copy(tmp, chunk[lo:mid])
-				tmp[len(tmp)-1] = '\n'
-				v.lines = append(v.lines, tmp)
-				addedLines++
-			}
-			lo = mid
+			lo, addedLines = v.addLine(chunk, lo, mid, addedLines)
 		}
 		if chunk[mid] == '\n' { // FIXME: windows is \r\n ?..
 			lo, mid = v.padded(chunk, lo, mid)
@@ -213,6 +206,18 @@ func (v *viewport) appendToLinebuffer(chunk []byte) int {
 	}
 
 	return addedLines
+}
+
+func (v *viewport) addLine(chunk []byte, lo, mid int, addedLines int) (int, int) {
+	if lo < mid {
+		tmp := make([]byte, mid-lo+1)
+		copy(tmp, chunk[lo:mid])
+		tmp[len(tmp)-1] = '\n'
+		v.lines = append(v.lines, tmp)
+		addedLines++
+	}
+	lo = mid
+	return lo, addedLines
 }
 
 func (v *viewport) loop() {

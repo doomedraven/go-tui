@@ -88,11 +88,7 @@ func (p *input) run() (string, error) {
 	}
 	defer io.Restore()
 	var frame bytes.Buffer
-	var init bool
 	for {
-		if !init {
-			init = true
-		}
 		err = p.labelTemplate.Execute(&frame, p.Label)
 		if err != nil {
 			return "", fmt.Errorf("label: %w", err)
@@ -108,43 +104,76 @@ func (p *input) run() (string, error) {
 		case <-p.ctx.Done():
 			return "", p.ctx.Err()
 		default:
-			key, err := io.ReadRune()
-			io.clear(1, &frame)
-			if err != nil {
-				if errors.Is(err, ErrUnknownRune) {
-					continue
-				}
-				frame.WriteTo(io) // clear the screen
-				// Ctrl+C or Ctrl+D
+			out, err := p.pressKey(io, &frame)
+			if errors.Is(err, ErrUnknownRune) {
+				continue
+			} else if err != nil {
 				return "", err
-			}
-			switch key {
-			case keyEnter:
-				frame.WriteTo(io)
-
-				return string(p.typed), nil
-			case 0x7f: // backspace
-				if len(p.typed) > 0 {
-					fmt.Fprintf(&frame, "\x1b[1K")
-					if p.cursor > 0 {
-						p.typed = p.typed[:p.cursor-1] + p.typed[p.cursor:]
-						p.cursor--
-					}
-				}
-			case '←':
-				if p.cursor > 0 {
-					p.cursor--
-				}
-			case '→':
-				if p.cursor < len(p.typed) {
-					p.cursor++
-				}
-			default:
-				p.typed = p.typed[:p.cursor] + string(key) + p.typed[p.cursor:]
-				p.cursor++
+			} else if out != "" {
+				// TODO: p.CheckFn
+				return out, nil
 			}
 		}
 	}
+}
+
+func (p *input) pressKey(io *termIO, frame *bytes.Buffer) (string, error) {
+	key, err := io.ReadRune()
+	io.clear(1, frame)
+	if err != nil {
+		if errors.Is(err, ErrUnknownRune) {
+			return "", nil
+		}
+		frame.WriteTo(io) // clear the screen
+		// Ctrl+C or Ctrl+D
+		return "", err
+	}
+	switch key {
+	case keyEnter:
+		return p.pressEnter(frame, io)
+	case 0x7f: // backspace
+		p.pressBackspace(frame)
+	case '←':
+		p.pressLeft()
+	case '→':
+		p.pressRight()
+	default:
+		p.pressAny(key)
+	}
+	return "", nil
+}
+
+func (p *input) pressEnter(frame *bytes.Buffer, io *termIO) (string, error) {
+	frame.WriteTo(io)
+
+	return string(p.typed), nil
+}
+
+func (p *input) pressBackspace(frame *bytes.Buffer) {
+	if len(p.typed) > 0 {
+		fmt.Fprintf(frame, "\x1b[1K")
+		if p.cursor > 0 {
+			p.typed = p.typed[:p.cursor-1] + p.typed[p.cursor:]
+			p.cursor--
+		}
+	}
+}
+
+func (p *input) pressLeft() {
+	if p.cursor > 0 {
+		p.cursor--
+	}
+}
+
+func (p *input) pressRight() {
+	if p.cursor < len(p.typed) {
+		p.cursor++
+	}
+}
+
+func (p *input) pressAny(key rune) {
+	p.typed = p.typed[:p.cursor] + string(key) + p.typed[p.cursor:]
+	p.cursor++
 }
 
 func (p *input) parseTemplates() (err error) {

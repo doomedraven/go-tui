@@ -31,7 +31,7 @@ func TestTruncateASCII(t *testing.T) {
 		{"abcde", "abc…"},
 	} {
 		t.Run(fmt.Sprint(tt), func(t *testing.T) {
-			assert.Equal(t, tt.out, string(truncateASCII(tt.in, 4)))
+			assert.Equal(t, tt.out, string(truncateAscii(tt.in, 4)))
 		})
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/nfx/go-tui"
 )
 
+//nolint:funlen,gocognit,cyclop // example
 func main() {
 	ctx := context.Background()
 	w := tui.NewIO(ctx)

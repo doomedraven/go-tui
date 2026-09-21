@@ -59,6 +59,8 @@ func newMultichoice() *multichoice {
 }
 
 // render displays the dropdown.
+//
+//nolint:cyclop // TODO: unfinished
 func (m *multichoice) render(io *termIO, buf *viewport) error {
 	// use buffer to write to io only once
 	var prefix int
@@ -145,6 +147,7 @@ type multichoiceItem struct {
 	Active   bool
 }
 
+//nolint:cyclop // TODO: unfinished
 func (m *multichoice) run() error {
 	io, err := m.makeTermIO(m.in, m.out)
 	if err != nil {

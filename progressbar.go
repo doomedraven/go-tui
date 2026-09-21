@@ -84,7 +84,6 @@ func (p *Progressbar) start(ctx context.Context) {
 	defer p.stop()
 	frame := bytes.NewBuffer(make([]byte, 2*p.io.Width))
 	frame.Reset()
-	var running bool
 	labelWidth := width([]byte(p.label)) + 1
 	for {
 		select {
@@ -98,35 +97,38 @@ func (p *Progressbar) start(ctx context.Context) {
 		case num := <-p.increments:
 			p.currentNum += num
 		case <-p.ticks:
-			if running {
-				err := p.io.clear(1, frame)
-				if err != nil {
-					p.err = fmt.Errorf("clear: %w", err)
-				}
-			}
-			frame.WriteByte('\r')
-			frame.WriteString(p.label)
-			frame.WriteString(" ")
-			err := p.render(frame, p.io.Width-labelWidth, p.now())
-			if err != nil {
-				p.err = fmt.Errorf("redraw: %w", err)
-
-				return
-			}
-			frame.WriteByte('\n')
-			frame.WriteByte('\r')
-			_, err = frame.WriteTo(p.io)
-			if err != nil {
-				p.err = fmt.Errorf("redraw: %w", err)
-
-				return
-			}
-			running = true
-			if p.isDone() {
+			done := p.tick(frame, labelWidth)
+			if done {
 				return
 			}
 		}
 	}
+}
+
+func (p *Progressbar) tick(frame *bytes.Buffer, labelWidth int) bool {
+	err := p.io.clear(1, frame)
+	if err != nil {
+		p.err = fmt.Errorf("clear: %w", err)
+	}
+	frame.WriteByte('\r')
+	frame.WriteString(p.label)
+	frame.WriteString(" ")
+	err = p.render(frame, p.io.Width-labelWidth, p.now())
+	if err != nil {
+		p.err = fmt.Errorf("redraw: %w", err)
+
+		return true
+	}
+	frame.WriteByte('\n')
+	frame.WriteByte('\r')
+	_, err = frame.WriteTo(p.io)
+	if err != nil {
+		p.err = fmt.Errorf("redraw: %w", err)
+
+		return true
+	}
+
+	return p.isDone()
 }
 
 func (p *Progressbar) stop() error {
@@ -166,18 +168,7 @@ func (p *progressState) isDone() bool {
 }
 
 func (p *progressState) render(frame *bytes.Buffer, width int, now time.Time) error {
-	increment := p.currentNum - p.sinceRedrawNum
-	if increment > 0 {
-		p.sinceRedrawNum = p.currentNum
-		p.elapsed = p.redrawAt.Sub(p.startedAt)
-		since := now.Sub(p.redrawAt)
-		completionRate := float64(increment) / since.Seconds()
-		p.rollingRates = append(p.rollingRates, completionRate)
-		if len(p.rollingRates) > 5 {
-			p.rollingRates = p.rollingRates[1:] // keep only the last 10 rates
-		}
-		p.redrawAt = now
-	}
+	p.increment(now)
 	rollingRate := p.rollingRate()
 	completion := 0.0
 	if p.maxNum > 0 {
@@ -221,6 +212,22 @@ func (p *progressState) render(frame *bytes.Buffer, width int, now time.Time) er
 	}
 
 	return nil
+}
+
+func (p *progressState) increment(now time.Time) {
+	increment := p.currentNum - p.sinceRedrawNum
+	if increment == 0 {
+		return
+	}
+	p.sinceRedrawNum = p.currentNum
+	p.elapsed = p.redrawAt.Sub(p.startedAt)
+	since := now.Sub(p.redrawAt)
+	completionRate := float64(increment) / since.Seconds()
+	p.rollingRates = append(p.rollingRates, completionRate)
+	if len(p.rollingRates) > 5 {
+		p.rollingRates = p.rollingRates[1:] // keep only the last 10 rates
+	}
+	p.redrawAt = now
 }
 
 func (p *progressState) remainingTime(rollingRate float64) string {

@@ -20,6 +20,7 @@ func newTrie() *trie {
 	}
 }
 
+//nolint:cyclop // it's ok
 func (t *trie) Add(word string, i int) {
 	r := t
 	var escape, isLetter bool

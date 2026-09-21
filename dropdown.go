@@ -50,6 +50,7 @@ type dropdown struct {
 
 	selected int
 	offset   int
+	typed    []rune
 
 	in  io.Reader
 	out io.Writer
@@ -149,22 +150,10 @@ func DropdownLazy[V any](label string, itemFn iter.Seq2[V, error], o ...opt) (V,
 			}
 		}
 	}()
-	err = opts(o).Apply(d)
+	i, err := dropdownIndex(d, o...)
 	if err != nil {
 		return zero, err
 	}
-	if d.OneReturn && len(d.Items) == 1 {
-		return zero, nil
-	}
-	err = d.parseTemplates()
-	if err != nil {
-		return zero, fmt.Errorf("templates: %w", err)
-	}
-	j, err := d.run()
-	if err != nil {
-		return zero, err
-	}
-	i := d.relevant[j]
 	item := d.Items[i]
 	if !d.Hide {
 		var buf bytes.Buffer
@@ -188,7 +177,27 @@ func DropdownIndex(label string, items []any, o ...opt) (int, error) {
 	}
 	d.Label = label
 	d.Items = items
-	err = opts(o).Apply(d)
+	i, err := dropdownIndex(d, o...)
+	if err != nil {
+		return -1, err
+	}
+	if !d.Hide {
+		var buf bytes.Buffer
+		err = d.answerTemplate.Execute(&buf, dropdownAnswer{
+			Label:  label,
+			Answer: items[i],
+		})
+		if err != nil {
+			return i, fmt.Errorf("answer: %w", err)
+		}
+		buf.WriteTo(d.out)
+	}
+
+	return i, nil
+}
+
+func dropdownIndex(d *dropdown, o ...opt) (int, error) {
+	err := opts(o).Apply(d)
 	if err != nil {
 		return -1, err
 	}
@@ -203,20 +212,7 @@ func DropdownIndex(label string, items []any, o ...opt) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	i := d.relevant[j]
-	if !d.Hide {
-		var buf bytes.Buffer
-		err = d.answerTemplate.Execute(&buf, dropdownAnswer{
-			Label:  label,
-			Answer: items[i],
-		})
-		if err != nil {
-			return i, fmt.Errorf("answer: %w", err)
-		}
-		buf.WriteTo(d.out)
-	}
-
-	return i, nil
+	return d.relevant[j], nil
 }
 
 var DefaultLabelTemplate = `{{ "?" | green }} {{ . | bold }}`
@@ -381,91 +377,32 @@ func (d *dropdown) getContext() context.Context {
 	return d.Ctx
 }
 
-func (d *dropdown) setItem(i int, item any) error {
-	err := d.inactiveItemTemplate.Execute(&d.inactive[i], item)
-	if err != nil {
-		return fmt.Errorf("inactive: %w", err)
-	}
-	d.trie.Add(d.inactive[i].String(), i)
-	d.widths[i] = width(d.inactive[i])
-	d.relevant[i] = i
-
-	return nil
-}
-
 // render displays the dropdown.
 func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
-	var prefix int
-	var err error
-
-	var longest int
-	if len(d.displayed) == 0 {
-		d.trie = newTrie()
-		d.inactive = make([]bbuf, len(d.Items))
-		d.widths = make([]int, len(d.Items))
-		d.relevant = make([]int, len(d.Items))
-		for i, item := range d.Items {
-			err = d.setItem(i, item)
-			if err != nil {
-				return fmt.Errorf("add item: %w", err)
-			}
-			longest = max(longest, d.widths[i])
-		}
-		d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+	longest, err := d.renderInit(io)
+	if err != nil {
+		return fmt.Errorf("init: %w", err)
 	}
-	var bufMore bbuf
+	var prefix int
 	total := len(d.relevant)
 	height := min(total, io.Height/2)
-	if total > len(d.displayed) {
-		err = d.moreItemsTemplate.Execute(&bufMore, dropdownMore{
-			More:  total - d.offset - height,
-			Total: total,
-		})
-		if err != nil {
-			return fmt.Errorf("more: %w", err)
-		}
-		longest = max(longest, width(bufMore))
+	bufMore, longest, err := d.renderMore(total, height, longest)
+	if err != nil {
+		return fmt.Errorf("more: %w", err)
 	}
-	var item bbuf
-	var itemW int
 	for i, j := range d.displayed {
 		buf.WriteByte('\r') // ensure we start from the leftmost position
 		if i == 0 {
-			label := d.labelBuf.Bytes()
-			// TODO: we still have issues when label overflows the terminal width - some terminals wrap it, some don't.
-			// proper solution would be to use viewports and scroll the label as well
-			prefix = width(label)
-			if prefix > io.Width {
-				label = truncateVisible(label, io.Width-1, ' ')
-			}
-			buf.Write(label)
-			if d.LabelNewLine || prefix+longest >= io.Width {
-				buf.WriteByte('\n')
-				buf.WriteByte('\r')
-				d.LabelNewLine = true
-				prefix = 0
-			}
+			prefix = d.renderLabel(buf, io, longest)
 		} else {
 			for range prefix {
 				buf.WriteByte(' ')
 			}
 		}
-		if i == d.selected {
-			item = nil // clear buffer
-			// only active item is re-rendered
-			err = d.activeItemTemplate.Execute(&item, d.Items[j])
-			if err != nil {
-				return fmt.Errorf("active: %w", err)
-			}
-			itemW = width(item)
-		} else {
-			item = d.inactive[j]
-			itemW = d.widths[j]
-		}
-		if itemW > io.Width {
-			// this may fail if active item is wider than the terminal, but we can solve this later
-			item = truncateVisible(item, io.Width-1, '\n')
+		item, err := d.renderItem(io, i, j)
+		if err != nil {
+			return fmt.Errorf("item[i%d,j%d]: %w", i, j, err)
 		}
 		buf.Write(item)
 	}
@@ -482,6 +419,92 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	buf.WriteByte('\r')
 
 	return nil
+}
+
+func (d *dropdown) renderInit(io *termIO) (longest int, err error) {
+	if len(d.displayed) > 0 {
+		return 0, nil // already initialized
+	}
+	d.trie = newTrie()
+	d.inactive = make([]bbuf, len(d.Items))
+	d.widths = make([]int, len(d.Items))
+	d.relevant = make([]int, len(d.Items))
+	for i, item := range d.Items {
+		err = d.setItem(i, item)
+		if err != nil {
+			return longest, fmt.Errorf("add item: %w", err)
+		}
+		longest = max(longest, d.widths[i])
+	}
+	d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+	return longest, nil
+}
+
+func (d *dropdown) setItem(i int, item any) error {
+	err := d.inactiveItemTemplate.Execute(&d.inactive[i], item)
+	if err != nil {
+		return fmt.Errorf("inactive: %w", err)
+	}
+	d.trie.Add(d.inactive[i].String(), i)
+	d.widths[i] = width(d.inactive[i])
+	d.relevant[i] = i
+
+	return nil
+}
+
+func (d *dropdown) renderLabel(buf *bytes.Buffer, io *termIO, longest int) int {
+	label := d.labelBuf.Bytes()
+	// TODO: we still have issues when label overflows the terminal width - some terminals wrap it, some don't.
+	// proper solution would be to use viewports and scroll the label as well
+	prefix := width(label)
+	if prefix > io.Width {
+		label = truncateVisible(label, io.Width-1, ' ')
+	}
+	buf.Write(label)
+	if d.LabelNewLine || prefix+longest >= io.Width {
+		buf.WriteByte('\n')
+		buf.WriteByte('\r')
+		d.LabelNewLine = true
+		prefix = 0
+	}
+	return prefix
+}
+
+func (d *dropdown) renderItem(io *termIO, i, j int) (item bbuf, err error) {
+	var itemW int
+	if i == d.selected {
+		// only active item is re-rendered
+		err := d.activeItemTemplate.Execute(&item, d.Items[j])
+		if err != nil {
+			return nil, fmt.Errorf("active: %w", err)
+		}
+		itemW = width(item)
+	} else {
+		item = d.inactive[j]
+		itemW = d.widths[j]
+	}
+	if itemW > io.Width {
+		// this may fail if active item is wider than the terminal, but we can solve this later
+		item = truncateVisible(item, io.Width-1, '\n')
+	}
+	return item, nil
+}
+
+func (d *dropdown) renderMore(total int, height int, longest int) (bbuf, int, error) {
+	var bufMore bbuf
+	if total <= len(d.displayed) {
+		return bufMore, longest, nil // nothing to do
+	}
+	err := d.moreItemsTemplate.Execute(&bufMore, dropdownMore{
+		More:  total - d.offset - height,
+		Total: total,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("more: %w", err)
+	}
+	longest = max(longest, width(bufMore))
+
+	return bufMore, longest, nil
 }
 
 type dropdownMore struct {
@@ -515,106 +538,160 @@ func (d *dropdown) run() (int, error) {
 	}
 	frame := bytes.NewBuffer(make([]byte, d.height(io)*io.Width))
 	frame.Reset()
-	var typed []rune
 	for {
-		err = d.render(io, frame)
+		i, err := d.runRender(io, frame)
 		if err != nil {
-			return -1, fmt.Errorf("render: %w", err)
+			return -1, err
 		}
-		frame.WriteTo(io)
-		space := d.height(io)
-		displayed := len(d.displayed)
-		select {
-		case it, more := <-d.itItems:
-			if !more {
-				d.iterDone = true
-				d.itItems = nil
-
-				continue
-			}
-			if it.err != nil {
-				io.clear(space, frame)
-				frame.WriteTo(io)
-
-				return -1, it.err
-			}
-			d.Items = append(d.Items, it.item)
-			d.inactive = append(d.inactive, nil)
-			d.widths = append(d.widths, 0)
-			d.relevant = append(d.relevant, 0)
-			err = d.setItem(len(d.Items)-1, it.item)
-			if err != nil {
-				return -1, fmt.Errorf("set item: %w", err)
-			}
-			d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
-			// if len(d.relevant) > displayed {
-			// 	space += 2
-			// }
-			io.clear(io.Height, frame)
-			frame.WriteTo(io)
-
-			continue
-		case <-d.Ctx.Done():
-			io.clear(space, frame)
-			frame.WriteTo(io)
-
-			return -1, d.Ctx.Err()
-		default:
-			// if d.itItems != nil && len(d.Items) < io.Height && !d.iterDone {
-			// 	continue
-			// }
-			key, err := io.ReadRune()
-			io.clear(space, frame)
-			if err != nil {
-				if errors.Is(err, ErrUnknownRune) {
-					continue
-				}
-				frame.WriteTo(io) // clear the screen
-				// Ctrl+C or Ctrl+D
-				return -1, err
-			}
-			switch key {
-			case keyEnter:
-				frame.WriteTo(io)
-
-				return d.offset + d.selected, nil
-			case '↑':
-				if d.offset > 0 && d.selected == 0 { // page up
-					d.offset--
-					d.displayed = d.relevant[d.offset : d.offset+displayed]
-				} else if d.selected > 0 {
-					d.selected--
-				}
-			case '↓':
-				if d.offset+displayed < len(d.relevant) { // page down
-					d.offset++
-					d.displayed = d.relevant[d.offset : d.offset+displayed]
-				} else if d.selected < displayed-1 {
-					d.selected++
-				}
-			case 0x7f: // backspace
-				if len(typed) > 0 {
-					typed = typed[:len(typed)-1]
-					d.relevant = d.trie.Prefix(string(typed))
-					d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
-					d.selected = 0
-					d.offset = 0
-				}
-			default:
-				typed = append(typed, key)
-				d.relevant = d.trie.Prefix(string(typed))
-				if d.OneReturn && len(d.relevant) == 1 {
-					return 0, nil
-				}
-				if len(d.relevant) == 0 {
-					typed = typed[:len(typed)-1]
-					d.relevant = d.trie.Prefix(string(typed))
-				} else {
-					d.displayed = d.relevant[:min(len(d.relevant), displayed, space)]
-					d.selected = 0
-					d.offset = 0
-				}
-			}
+		if i >= 0 {
+			return i, nil
 		}
 	}
+}
+
+func (d *dropdown) runRender(io *termIO, frame *bytes.Buffer) (int, error) {
+	err := d.render(io, frame)
+	if err != nil {
+		return -1, fmt.Errorf("render: %w", err)
+	}
+	frame.WriteTo(io)
+	space := d.height(io)
+	displayed := len(d.displayed)
+	select {
+	case it, more := <-d.itItems:
+		err := d.loadItem(io, frame, it, more, space)
+		return -1, err
+	case <-d.Ctx.Done():
+		io.clear(space, frame)
+		frame.WriteTo(io)
+
+		return -1, d.Ctx.Err()
+	default:
+		return d.runMain(io, frame, space, displayed)
+	}
+}
+
+func (d *dropdown) runMain(io *termIO, frame *bytes.Buffer, space, displayed int) (int, error) {
+	if d.itItems != nil && len(d.Items) < io.Height && !d.iterDone {
+		return -1, nil
+	}
+	i, err := d.pressKey(io, frame, space, displayed)
+	if errors.Is(err, ErrUnknownRune) {
+		return -1, nil
+	} else if err != nil {
+		frame.WriteTo(io) // clear the screen
+		return -1, err
+	}
+	if i < 0 {
+		return -1, nil
+	}
+	frame.WriteTo(io) // clear the screen
+	return i, nil
+}
+
+// this method is still work in progress.
+func (d *dropdown) loadItem(io *termIO, frame *bytes.Buffer, it itPair, more bool, space int) error {
+	if !more {
+		d.iterDone = true
+		d.itItems = nil
+
+		return nil
+	}
+	if it.err != nil {
+		io.clear(space, frame)
+		frame.WriteTo(io)
+
+		return it.err
+	}
+	d.Items = append(d.Items, it.item)
+	d.inactive = append(d.inactive, nil)
+	d.widths = append(d.widths, 0)
+	d.relevant = append(d.relevant, 0)
+	err := d.setItem(len(d.Items)-1, it.item)
+	if err != nil {
+		return fmt.Errorf("set item: %w", err)
+	}
+	d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+	// if len(d.relevant) > displayed {
+	// 	space += 2
+	// }
+	io.clear(io.Height, frame)
+	frame.WriteTo(io)
+
+	return nil
+}
+
+func (d *dropdown) pressKey(io *termIO, frame *bytes.Buffer, space, displayed int) (i int, err error) {
+	key, err := io.ReadRune()
+	if err != nil {
+		return -1, err
+	}
+	err = io.clear(space, frame)
+	if err != nil {
+		return -1, err
+	}
+	switch key {
+	case keyEnter:
+		frame.WriteTo(io) // TODO: check if we can just defer it from beginning of the method
+
+		return d.offset + d.selected, nil
+	case '↑':
+		d.pressUp(displayed)
+	case '↓':
+		d.pressDown(displayed)
+	case 0x7f: // backspace
+		d.pressBackspace(io)
+	default:
+		done := d.pressAny(key, displayed, space)
+		if done {
+			return 0, nil
+		}
+	}
+	return -1, nil
+}
+
+func (d *dropdown) pressUp(displayed int) {
+	if d.offset > 0 && d.selected == 0 { // page up
+		d.offset--
+		d.displayed = d.relevant[d.offset : d.offset+displayed]
+	} else if d.selected > 0 {
+		d.selected--
+	}
+}
+
+func (d *dropdown) pressDown(displayed int) {
+	if d.offset+displayed < len(d.relevant) { // page down
+		d.offset++
+		d.displayed = d.relevant[d.offset : d.offset+displayed]
+	} else if d.selected < displayed-1 {
+		d.selected++
+	}
+}
+
+func (d *dropdown) pressBackspace(io *termIO) {
+	if len(d.typed) == 0 {
+		return
+	}
+	d.typed = d.typed[:len(d.typed)-1]
+	d.relevant = d.trie.Prefix(string(d.typed))
+	d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+	d.selected = 0
+	d.offset = 0
+}
+
+func (d *dropdown) pressAny(key rune, displayed, space int) bool {
+	d.typed = append(d.typed, key)
+	d.relevant = d.trie.Prefix(string(d.typed))
+	if d.OneReturn && len(d.relevant) == 1 {
+		return true
+	}
+	if len(d.relevant) == 0 {
+		d.typed = d.typed[:len(d.typed)-1]
+		d.relevant = d.trie.Prefix(string(d.typed))
+		return false
+	}
+	d.displayed = d.relevant[:min(len(d.relevant), displayed, space)]
+	d.selected = 0
+	d.offset = 0
+	return false
 }

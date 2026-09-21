@@ -141,23 +141,16 @@ func (t *termIO) ReadKey() (rune, error) {
 	}
 }
 
+// TODO: fix stdmethod (rune, int, error).
 func (t *termIO) ReadRune() (rune, error) {
 	buf := make([]byte, 4)
 	n, err := t.Read(buf) // todo: fixme
 	if errors.Is(err, io.EOF) {
 		return keyCtrlD, io.EOF
 	}
-	if n >= 3 && buf[0] == 0x1b && buf[1] == 0x5b {
-		switch buf[2] {
-		case 0x41: // Up arrow.
-			return '↑', nil
-		case 0x42: // Down arrow.
-			return '↓', nil
-		case 0x43: // Right arrow.
-			return '→', nil
-		case 0x44: // Left arrow.
-			return '←', nil
-		}
+	r, ok := t.maybeKnownRune(buf[:n])
+	if ok {
+		return r, nil
 	}
 	if n > 1 {
 		return 0, fmt.Errorf("%w: %x", ErrUnknownRune, buf)
@@ -167,6 +160,27 @@ func (t *termIO) ReadRune() (rune, error) {
 		return 0, io.EOF
 	default:
 		return rune(buf[0]), nil
+	}
+}
+
+func (t *termIO) maybeKnownRune(buf []byte) (rune, bool) {
+	if len(buf) < 3 {
+		return 0, false
+	}
+	if buf[0] != 0x1b && buf[1] != 0x5b {
+		return 0, false
+	}
+	switch buf[2] {
+	case 0x41: // Up arrow.
+		return '↑', true
+	case 0x42: // Down arrow.
+		return '↓', true
+	case 0x43: // Right arrow.
+		return '→', true
+	case 0x44: // Left arrow.
+		return '←', true
+	default:
+		return 0, false
 	}
 }
 
