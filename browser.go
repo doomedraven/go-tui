@@ -27,7 +27,7 @@ func Browserf(addr string, args ...any) error {
 	case "darwin": // macOS
 		cmd = exec.Command("open", addr)
 	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+		return fmt.Errorf("%w: %s", ErrUnsupportedPlatform, runtime.GOOS)
 	}
 
 	return cmd.Start()

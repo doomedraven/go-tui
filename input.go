@@ -26,7 +26,7 @@ func inputOpt(o func(d *input) error) opt {
 	return func(a any) error {
 		d, ok := a.(*input)
 		if !ok {
-			return fmt.Errorf("need a input, got %v", a)
+			return fmt.Errorf("%w: need a input, got %v", ErrInvalidState, a)
 		}
 
 		return o(d)

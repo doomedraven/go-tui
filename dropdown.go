@@ -77,8 +77,6 @@ func Confirm(action string, opts ...opt) bool {
 	return strings.EqualFold(res, "yes")
 }
 
-var ErrNoItems = errors.New("no items provided")
-
 type mapKV[K comparable, V any] struct {
 	Key   K
 	Value V
@@ -231,7 +229,7 @@ func dropdownOpt(o func(d *dropdown) error) opt {
 		// check if a is any dropdown
 		d, ok := a.(*dropdown)
 		if !ok {
-			return fmt.Errorf("need a dropdown, got %v", a)
+			return fmt.Errorf("%w: need a dropdown, got %v", ErrInvalidState, a)
 		}
 
 		return o(d)

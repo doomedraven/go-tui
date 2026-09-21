@@ -1,0 +1,12 @@
+// Copyright 2026 Serge Smertin
+// SPDX-License-Identifier: MIT
+
+package tui
+
+import "errors"
+
+var (
+	ErrNoItems             = errors.New("no items")
+	ErrInvalidState        = errors.New("invalid state")
+	ErrUnsupportedPlatform = errors.New("unsupported platform")
+)

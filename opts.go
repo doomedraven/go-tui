@@ -5,7 +5,7 @@ package tui
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"time"
 )
@@ -41,7 +41,7 @@ func WithInput(r io.Reader) opt {
 	return func(d any) error {
 		io, ok := d.(withIO)
 		if !ok {
-			return errors.New("cannot set IO")
+			return fmt.Errorf("%w: cannot set IO", ErrInvalidState)
 		}
 		io.setReader(r)
 
@@ -53,7 +53,7 @@ func WithOutput(w io.Writer) opt {
 	return func(d any) error {
 		io, ok := d.(withIO)
 		if !ok {
-			return errors.New("cannot set IO")
+			return fmt.Errorf("%w: cannot set IO", ErrInvalidState)
 		}
 		io.setWriter(w)
 
@@ -71,7 +71,7 @@ func WithContext(ctx context.Context) opt {
 	return func(d any) error {
 		x, ok := d.(withContext)
 		if !ok {
-			return errors.New("cannot set context")
+			return fmt.Errorf("%w: cannot set context", ErrInvalidState)
 		}
 		x.setContext(ctx)
 
@@ -83,7 +83,7 @@ func WithTimeout(timeout time.Duration) opt {
 	return func(d any) error {
 		x, ok := d.(withContext)
 		if !ok {
-			return errors.New("cannot set context")
+			return fmt.Errorf("%w: cannot set context", ErrInvalidState)
 		}
 		ctx := x.getContext()
 		ctx, _ = context.WithTimeout(ctx, timeout)

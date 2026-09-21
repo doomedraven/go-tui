@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -36,7 +35,7 @@ var clipboardPasteImplementations = map[string][][]string{
 func (cr *clipboard) pasteCommand() (*exec.Cmd, error) {
 	impls, ok := clipboardPasteImplementations[runtime.GOOS]
 	if !ok {
-		return nil, fmt.Errorf("not supported: %s", runtime.GOOS)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedPlatform, runtime.GOOS)
 	}
 	for _, args := range impls {
 		_, err := exec.LookPath(args[0])
@@ -47,7 +46,7 @@ func (cr *clipboard) pasteCommand() (*exec.Cmd, error) {
 		return exec.Command(args[0], args[1:]...), nil
 	}
 
-	return nil, errors.New("no clipboard paste utility found")
+	return nil, fmt.Errorf("%w: no clipboard paste utility found", ErrUnsupportedPlatform)
 }
 
 func (cr *clipboard) Read() (string, error) {
