@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 	"sort"
 	"strings"
@@ -42,6 +43,11 @@ type dropdown struct {
 
 	ItemsFn func(prefix string) []any
 
+	IterBatchSize int
+	IterFn        func(any, error) bool
+	iterDone      bool
+	itItems       chan itPair
+
 	selected int
 	offset   int
 
@@ -50,6 +56,11 @@ type dropdown struct {
 
 	// TODO: special case for testing?..
 	makeTermIO func(in io.Reader, out io.Writer) (*termIO, error)
+}
+
+type itPair struct {
+	item any
+	err  error
 }
 
 func Confirmf(format string, a ...any) bool {
@@ -113,6 +124,58 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	}
 	// we know i is valid
 	return items[i], nil
+}
+
+func DropdownLazy[V any](label string, itemFn iter.Seq2[V, error], o ...opt) (V, error) {
+	var zero V
+	d, err := newDropdown()
+	if err != nil {
+		return zero, err
+	}
+	d.Label = label
+	d.itItems = make(chan itPair)
+	go func() {
+		defer close(d.itItems)
+		for v, err := range itemFn {
+			select {
+			case <-d.Ctx.Done():
+				return
+			case d.itItems <- itPair{v, err}:
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+	err = opts(o).Apply(d)
+	if err != nil {
+		return zero, err
+	}
+	if d.OneReturn && len(d.Items) == 1 {
+		return zero, nil
+	}
+	err = d.parseTemplates()
+	if err != nil {
+		return zero, fmt.Errorf("templates: %w", err)
+	}
+	j, err := d.run()
+	if err != nil {
+		return zero, err
+	}
+	i := d.relevant[j]
+	item := d.Items[i]
+	if !d.Hide {
+		var buf bytes.Buffer
+		err = d.answerTemplate.Execute(&buf, dropdownAnswer{
+			Label:  label,
+			Answer: item,
+		})
+		if err != nil {
+			return zero, fmt.Errorf("answer: %w", err)
+		}
+		buf.WriteTo(d.out)
+	}
+	return item.(V), nil
 }
 
 func DropdownIndex(label string, items []any, o ...opt) (int, error) {
@@ -235,6 +298,7 @@ func newDropdown() (*dropdown, error) {
 		InactiveItemTemplate: DefaultDropdownInactiveItemTemplate,
 		MoreItemsTemplate:    DefaultMoreItemsTemplate,
 		AnswerTemplate:       DefaultAnswerTemplate,
+		IterBatchSize:        10,
 	}
 	return d, nil
 }
@@ -302,6 +366,17 @@ func (d *dropdown) getContext() context.Context {
 	return d.Ctx
 }
 
+func (d *dropdown) setItem(i int, item any) error {
+	err := d.inactiveItemTemplate.Execute(&d.inactive[i], item)
+	if err != nil {
+		return fmt.Errorf("inactive: %w", err)
+	}
+	d.trie.Add(d.inactive[i].String(), i)
+	d.widths[i] = width(d.inactive[i])
+	d.relevant[i] = i
+	return nil
+}
+
 // render displays the dropdown
 func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 	// use buffer to write to io only once
@@ -315,13 +390,10 @@ func (d *dropdown) render(io *termIO, buf *bytes.Buffer) error {
 		d.widths = make([]int, len(d.Items))
 		d.relevant = make([]int, len(d.Items))
 		for i, item := range d.Items {
-			err = d.inactiveItemTemplate.Execute(&d.inactive[i], item)
+			err = d.setItem(i, item)
 			if err != nil {
-				return fmt.Errorf("inactive: %w", err)
+				return fmt.Errorf("add item: %w", err)
 			}
-			d.trie.Add(d.inactive[i].String(), i)
-			d.widths[i] = width(d.inactive[i])
-			d.relevant[i] = i
 			longest = max(longest, d.widths[i])
 		}
 		d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
@@ -435,11 +507,40 @@ func (d *dropdown) run() (int, error) {
 		space := d.height(io)
 		displayed := len(d.displayed)
 		select {
+		case it, more := <-d.itItems:
+			if !more {
+				d.iterDone = true
+				d.itItems = nil
+				continue
+			}
+			if it.err != nil {
+				io.clear(space, frame)
+				frame.WriteTo(io)
+				return -1, it.err
+			}
+			d.Items = append(d.Items, it.item)
+			d.inactive = append(d.inactive, nil)
+			d.widths = append(d.widths, 0)
+			d.relevant = append(d.relevant, 0)
+			err = d.setItem(len(d.Items)-1, it.item)
+			if err != nil {
+				return -1, fmt.Errorf("set item: %w", err)
+			}
+			d.displayed = d.relevant[:min(len(d.relevant), io.Height/2)]
+			// if len(d.relevant) > displayed {
+			// 	space += 2
+			// }
+			io.clear(io.Height, frame)
+			frame.WriteTo(io)
+			continue
 		case <-d.Ctx.Done():
 			io.clear(space, frame)
 			frame.WriteTo(io)
 			return -1, d.Ctx.Err()
 		default:
+			// if d.itItems != nil && len(d.Items) < io.Height && !d.iterDone {
+			// 	continue
+			// }
 			key, err := io.ReadRune()
 			io.clear(space, frame)
 			if err != nil {
