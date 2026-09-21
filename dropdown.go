@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -66,6 +66,37 @@ func Confirm(action string, opts ...opt) bool {
 
 var ErrNoItems = errors.New("no items provided")
 
+type mapKV[K comparable, V any] struct {
+	Key   K
+	Value V
+}
+
+func DropdownKV[K comparable, V any](label string, items map[K]V, opts ...opt) (K, V, error) {
+	var zeroK K
+	var zeroV V
+	if len(items) == 0 {
+		return zeroK, zeroV, ErrNoItems
+	}
+	kvs := make([]mapKV[K, V], 0, len(items))
+	for k, v := range items {
+		kvs = append(kvs, mapKV[K, V]{k, v})
+	}
+	sort.Slice(kvs, func(i, j int) bool {
+		// sort by key, use fmt to convert to string
+		return fmt.Sprintf("%v", kvs[i].Key) < fmt.Sprintf("%v", kvs[j].Key)
+	})
+	opts = append([]opt{
+		WithActiveItemTemplate(`→ {{ bold .Key }}`),
+		WithInactiveItemTemplate(`~ {{ dim .Key }}`),
+		WithAnswerTemplate(`{{ dim "✔ " .Label " …" }} {{ .Answer.Key | bold }}`),
+	}, opts...)
+	item, err := Dropdown(label, kvs, opts...)
+	if err != nil {
+		return zeroK, zeroV, err
+	}
+	return item.Key, item.Value, nil
+}
+
 func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	var zero T
 	if len(items) == 0 {
@@ -74,12 +105,6 @@ func Dropdown[T any](label string, items []T, opts ...opt) (T, error) {
 	// apparently, there's no other non-reflective way around
 	anyItems := make([]any, len(items))
 	for i, v := range items {
-		rv := reflect.ValueOf(v)
-		if rv.Kind() == reflect.Ptr && rv.IsNil() {
-			continue
-		} else if rv.IsZero() {
-			continue
-		}
 		anyItems[i] = v
 	}
 	i, err := DropdownIndex(label, anyItems, opts...)
