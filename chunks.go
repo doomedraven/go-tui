@@ -75,7 +75,8 @@ func truncateAsciiEscapes(escape bool, chunk string, lo, m, width int) (bool, in
 				m++ // SGR start
 			}
 		}
-	} else if isEscapeStart(chunk[lo]) {
+	}
+	if isEscapeStart(chunk[lo]) {
 		escape = true
 		width--
 	}

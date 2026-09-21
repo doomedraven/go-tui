@@ -314,7 +314,6 @@ func (s *Spinners) redraw(prevActive int) int {
 		frame.WriteByte('\r')
 		currActive++
 	}
-	prevActive = currActive
 	frame.WriteTo(s.io)
 
 	return currActive

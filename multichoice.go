@@ -60,7 +60,7 @@ func newMultichoice() *multichoice {
 
 // render displays the dropdown.
 //
-//nolint:cyclop,funlen,gocognit // TODO: unfinished
+//nolint:cyclop,funlen,gocognit,ineffassign,nestif // TODO: unfinished
 func (m *multichoice) render(io *termIO, buf *viewport) error {
 	// use buffer to write to io only once
 	var prefix int

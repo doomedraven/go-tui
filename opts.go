@@ -33,8 +33,8 @@ func WithOptions(o ...opt) opt {
 }
 
 type withIO interface {
-	setWriter(io.Writer)
-	setReader(io.Reader)
+	setWriter(w io.Writer)
+	setReader(r io.Reader)
 }
 
 func WithInput(r io.Reader) opt {
@@ -62,7 +62,7 @@ func WithOutput(w io.Writer) opt {
 }
 
 type withContext interface {
-	setContext(context.Context)
+	setContext(ctx context.Context)
 	getContext() context.Context
 }
 
