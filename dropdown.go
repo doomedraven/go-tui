@@ -229,20 +229,8 @@ type dropdownAnswer struct {
 	Answer any
 }
 
-func dropdownOpt(o func(d *dropdown) error) opt {
-	return func(a any) error {
-		// check if a is any dropdown
-		d, ok := a.(*dropdown)
-		if !ok {
-			return fmt.Errorf("%w: need a dropdown, got %v", ErrInvalidState, a)
-		}
-
-		return o(d)
-	}
-}
-
 func WithOneReturn() opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.OneReturn = true
 
 		return nil
@@ -250,7 +238,7 @@ func WithOneReturn() opt {
 }
 
 func WithHide() opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.Hide = true
 
 		return nil
@@ -258,7 +246,7 @@ func WithHide() opt {
 }
 
 func WithLabelTemplate(tmpl string) opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.LabelTemplate = tmpl
 
 		return nil
@@ -266,7 +254,7 @@ func WithLabelTemplate(tmpl string) opt {
 }
 
 func WithActiveItemTemplate(tmpl string) opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.ActiveItemTemplate = tmpl
 
 		return nil
@@ -274,7 +262,7 @@ func WithActiveItemTemplate(tmpl string) opt {
 }
 
 func WithInactiveItemTemplate(tmpl string) opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.InactiveItemTemplate = tmpl
 
 		return nil
@@ -282,7 +270,7 @@ func WithInactiveItemTemplate(tmpl string) opt {
 }
 
 func WithMoreItemsTemplate(tmpl string) opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.MoreItemsTemplate = tmpl
 
 		return nil
@@ -290,7 +278,7 @@ func WithMoreItemsTemplate(tmpl string) opt {
 }
 
 func WithAnswerTemplate(tmpl string) opt {
-	return dropdownOpt(func(d *dropdown) error {
+	return opT(func(d *dropdown) error {
 		d.AnswerTemplate = tmpl
 
 		return nil

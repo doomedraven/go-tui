@@ -29,7 +29,7 @@ func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt)
 		WithInput(cio),
 		WithOutput(cio),
 		WithContext(ctx),
-		dropdownOpt(func(d *dropdown) error {
+		opT(func(d *dropdown) error {
 			d.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
 				return &termIO{
 					in:      in,

@@ -9,4 +9,5 @@ var (
 	ErrNoItems             = errors.New("no items")
 	ErrInvalidState        = errors.New("invalid state")
 	ErrUnsupportedPlatform = errors.New("unsupported platform")
+	ErrWrongWidget         = errors.New("wrong widget type")
 )

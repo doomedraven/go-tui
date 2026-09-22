@@ -5,6 +5,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -18,7 +19,9 @@ func (o opts) Apply(d any) error {
 	var err error
 	for _, o := range o {
 		err = o(d)
-		if err != nil {
+		if errors.Is(err, ErrWrongWidget) {
+			continue
+		} else if err != nil {
 			return err
 		}
 	}
