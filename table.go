@@ -32,6 +32,21 @@ func Table[T any](w io.Writer, rowTmpl string, iterator iter.Seq2[T, error], o .
 	return t.flush()
 }
 
+func TableSlice[T any](w io.Writer, rowTmpl string, iterator []T, o ...opt) error {
+	t, err := newTable(w, rowTmpl, o...)
+	if err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	for _, v := range iterator {
+		err = t.Append(v)
+		if err != nil {
+			return fmt.Errorf("row %d: append: %w", t.consumed, err)
+		}
+	}
+
+	return t.flush()
+}
+
 // table is an alternative to text/tabwriter that supports ANSI colors and
 // truncation of wide cells. It uses text/template to render each row.
 // The first row is used to extract the headers from the template.
