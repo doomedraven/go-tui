@@ -54,7 +54,7 @@ type table struct {
 	w           io.Writer
 	buf         []byte
 	tmpl        *template.Template
-	columns     []int
+	columns     []tableColumn
 	rows        [][]string
 	curr        []string
 	cellPad     int
@@ -63,6 +63,10 @@ type table struct {
 	colMinWidth int
 	locked      bool
 	consumed    int
+}
+
+type tableColumn struct {
+	width int
 }
 
 func newTable(w io.Writer, rowTmpl string, o ...opt) (*table, error) {
@@ -124,7 +128,7 @@ func (t *table) headers() error {
 	if err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
-	t.columns = make([]int, len(headers))
+	t.columns = make([]tableColumn, len(headers))
 	for i := range headers {
 		headers[i] = mkBold(strings.ToUpper(headers[i]))
 	}
@@ -158,7 +162,7 @@ func (t *table) flush() error {
 }
 
 func (t *table) padded(buf *bytes.Buffer, cell string, col int) error {
-	padding := t.columns[col] - width([]byte(cell))
+	padding := t.columns[col].width - width([]byte(cell))
 	_, err := buf.WriteString(cell)
 	if err != nil {
 		return fmt.Errorf("write string: %w", err)
@@ -204,12 +208,12 @@ func (t *table) currentCell(cell []byte, col, maxLen int) []byte {
 		return []byte{}
 	}
 	if t.locked {
-		maxLen = t.columns[col]
+		maxLen = t.columns[col].width
 	}
 	cell = truncateVisible(cell, maxLen, ' ')
 	t.curr = append(t.curr, string(cell))
 	if !t.locked {
-		t.columns[col] = max(t.columns[col], width(cell)+t.cellPad)
+		t.columns[col].width = max(t.columns[col].width, width(cell)+t.cellPad)
 	}
 	cell = cell[:0]
 
