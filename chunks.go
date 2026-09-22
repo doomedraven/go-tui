@@ -46,6 +46,9 @@ func truncateAscii(chunk string, maxLen int) (out string) {
 			out = "…" // this is quite a hack
 		}
 	}()
+	if width([]byte(chunk)) <= maxLen {
+		return chunk
+	}
 	lo, hi, width, m := 0, len(chunk), 0, 0
 	var escape bool
 	for lo < hi {

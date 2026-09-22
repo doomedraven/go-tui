@@ -26,7 +26,7 @@ func TestTruncateASCII(t *testing.T) {
 		{"a", "a"},
 		{"ab", "ab"},
 		{"abc", "abc"},
-		{"abcd", "abc…"},
+		{"abcd", "abcd"},
 		{"abcdef", "abc…"},
 		{"abcde", "abc…"},
 	} {
