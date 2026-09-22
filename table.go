@@ -114,11 +114,9 @@ func newTable[T any](w io.Writer, rowTmpl string, o ...opt) (*table, error) {
 		cellPad:     1,
 		colMinWidth: 1,
 	}
-	for _, fn := range o {
-		err = fn(t)
-		if err != nil {
-			return nil, fmt.Errorf("option: %w", err)
-		}
+	err = opts(o).Apply(t)
+	if err != nil {
+		return nil, err
 	}
 	err = t.headers()
 	if err != nil {
