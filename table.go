@@ -5,17 +5,20 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
+	"reflect"
 	"strings"
 	"text/template"
 	"text/template/parse"
 )
 
-func Table[T any](w io.Writer, rowTmpl string, iterator iter.Seq2[T, error], o ...opt) error {
-	t, err := newTable(w, rowTmpl, o...)
+func TableIter[T any](w io.Writer, rowTmpl string, iterator iter.Seq2[T, error], o ...opt) error {
+	t, err := newTable[T](w, rowTmpl, o...)
 	if err != nil {
 		return fmt.Errorf("table: %w", err)
 	}
@@ -32,8 +35,23 @@ func Table[T any](w io.Writer, rowTmpl string, iterator iter.Seq2[T, error], o .
 	return t.flush()
 }
 
-func TableSlice[T any](w io.Writer, rowTmpl string, iterator []T, o ...opt) error {
-	t, err := newTable(w, rowTmpl, o...)
+func Table[T any](w io.Writer, rowTmpl string, iterator []T, o ...opt) error {
+	t, err := newTable[T](w, rowTmpl, o...)
+	if err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	for _, v := range iterator {
+		err = t.Append(v)
+		if err != nil {
+			return fmt.Errorf("row %d: append: %w", t.consumed, err)
+		}
+	}
+
+	return t.flush()
+}
+
+func TableX[T any](w io.Writer, iterator []T, o ...opt) error {
+	t, err := newTable[T](w, "", o...)
 	if err != nil {
 		return fmt.Errorf("table: %w", err)
 	}
@@ -55,6 +73,7 @@ type table struct {
 	buf         []byte
 	tmpl        *template.Template
 	columns     []tableColumn
+	metadata    structFields
 	rows        [][]string
 	curr        []string
 	cellPad     int
@@ -67,9 +86,20 @@ type table struct {
 
 type tableColumn struct {
 	width int
+	meta  *fieldMetadata
 }
 
-func newTable(w io.Writer, rowTmpl string, o ...opt) (*table, error) {
+func newTable[T any](w io.Writer, rowTmpl string, o ...opt) (*table, error) {
+	metadata, err := structFieldsFor[T]()
+	if err != nil {
+		return nil, fmt.Errorf("metadata: %w", err)
+	}
+	if rowTmpl == "" {
+		rowTmpl = metadata.Template()
+		if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+			slog.Debug("table: generated template", "template", rowTmpl)
+		}
+	}
 	tmpl, err := template.New("row").Funcs(colorFns).Parse(rowTmpl)
 	if err != nil {
 		return nil, fmt.Errorf("template: %w", err)
@@ -77,6 +107,7 @@ func newTable(w io.Writer, rowTmpl string, o ...opt) (*table, error) {
 	t := &table{
 		w:           w,
 		tmpl:        tmpl,
+		metadata:    metadata,
 		buf:         []byte{},
 		maxWidth:    80,
 		batchSize:   10,
@@ -128,9 +159,22 @@ func (t *table) headers() error {
 	if err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
+	lookup := make(map[string]*fieldMetadata, len(t.metadata))
+	for _, f := range t.metadata {
+		lookup[f.name] = f
+	}
 	t.columns = make([]tableColumn, len(headers))
 	for i := range headers {
-		headers[i] = mkBold(strings.ToUpper(headers[i]))
+		meta, ok := lookup[headers[i]]
+		if !ok {
+			meta = &fieldMetadata{
+				header:     strings.ToUpper(headers[i]),
+				kind:       reflect.String,
+				autoHeader: true,
+			}
+		}
+		t.columns[i].meta = meta
+		headers[i] = mkBold(meta.header)
 	}
 	t.buf = append(t.buf, []byte(strings.Join(headers, "\t")+"\n")...)
 
@@ -163,14 +207,31 @@ func (t *table) flush() error {
 
 func (t *table) padded(buf *bytes.Buffer, cell string, col int) error {
 	padding := t.columns[col].width - width([]byte(cell))
+	if t.columns[col].meta.alignRight { // right align
+		err := t.pad(buf, padding)
+		if err != nil {
+			return err
+		}
+	}
 	_, err := buf.WriteString(cell)
 	if err != nil {
 		return fmt.Errorf("write string: %w", err)
 	}
-	for range padding { // left align
-		err = buf.WriteByte(' ')
+	if !t.columns[col].meta.alignRight { // left align
+		err = t.pad(buf, padding)
 		if err != nil {
-			return fmt.Errorf("right pad: %w", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (*table) pad(buf *bytes.Buffer, padding int) error {
+	for range padding {
+		err := buf.WriteByte(' ')
+		if err != nil {
+			return fmt.Errorf("pad: %w", err)
 		}
 	}
 
@@ -305,4 +366,125 @@ func (t *table) extractFromList(n *parse.ListNode) ([]string, error) {
 
 func mkBold(s string) string {
 	return "\x1b[1m" + s + "\x1b[0m"
+}
+
+// theoretically we could make this public with additional options.
+type fieldMetadata struct {
+	header     string
+	name       string
+	autoHeader bool
+	alignRight bool
+	kind       reflect.Kind
+}
+
+func (f *fieldMetadata) Template() string {
+	switch f.kind {
+	case reflect.Bool:
+		return "{{if ." + f.name + "}}yes{{else}}no{{end}}"
+	case reflect.Float32, reflect.Float64:
+		return "{{printf \"%.2f\" ." + f.name + "}}"
+	default:
+		return "{{." + f.name + "}}"
+	}
+}
+
+type structFields []*fieldMetadata
+
+func (s structFields) Template() string {
+	parts := make([]string, len(s))
+	for i, col := range s {
+		parts[i] = col.Template()
+	}
+
+	return strings.Join(parts, "\t")
+}
+
+func structFieldsFor[T any]() (structFields, error) {
+	var t T
+	rt := reflect.ValueOf(t).Type()
+	if rt.Kind() == reflect.Pointer {
+		rt = rt.Elem()
+	}
+	if rt.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct or pointer to struct, got %s", rt.Kind())
+	}
+
+	return reflectStructFields(rt)
+}
+
+func reflectStructFields(rt reflect.Type) (structFields, error) {
+	var out structFields
+	for i := range rt.NumField() {
+		f := rt.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = f.Type.Elem()
+		}
+		if ft.Kind() == reflect.Struct {
+			nested, err := reflectStructFields(ft)
+			if err != nil {
+				return nil, fmt.Errorf("nested %s: %w", f.Name, err)
+			}
+			for _, n := range nested {
+				if n.autoHeader {
+					n.header = strings.ToUpper(f.Name + "." + n.header)
+				}
+				n.name = f.Name + "." + n.name
+				out = append(out, n)
+			}
+
+			continue
+		}
+		meta, err := reflectFieldMetadata(ft, f.Tag, f.Name)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name, err)
+		}
+		out = append(out, meta)
+	}
+
+	return out, nil
+}
+
+func reflectFieldMetadata(ft reflect.Type, tag reflect.StructTag, name string) (*fieldMetadata, error) {
+	meta := fieldMetadata{
+		autoHeader: tag.Get("header") == "",
+		kind:       ft.Kind(),
+		name:       name,
+	}
+	switch ft.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		meta.alignRight = true
+	case reflect.Bool, reflect.String:
+		meta.kind = ft.Kind()
+	default:
+		if meta.autoHeader {
+			return nil, fmt.Errorf("cannot use %s without explicit header tag", ft.Kind())
+		}
+	}
+	queue := strings.Split(tag.Get("header"), ",")
+	if len(queue) == 0 {
+		meta.header = strings.ToUpper(name)
+	} else {
+		meta.header = queue[0]
+		queue = queue[1:]
+		for len(queue) > 0 {
+			option := strings.TrimSpace(queue[0])
+			queue = queue[1:]
+			switch option {
+			case "align-right":
+				meta.alignRight = true
+			case "align-left":
+				meta.alignRight = false
+			default:
+				return nil, fmt.Errorf("unknown header option: %q", option)
+			}
+		}
+	}
+
+	return &meta, nil
 }
