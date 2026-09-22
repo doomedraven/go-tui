@@ -266,6 +266,10 @@ func (t *table) currentBuffer() {
 
 func (t *table) currentCell(cell []byte, col, maxLen int) []byte {
 	if len(cell) == 0 {
+		// value is not available, but we need to insert something
+		// to keep the table structure intact.
+		t.curr = append(t.curr, " ")
+
 		return []byte{}
 	}
 	if t.locked {

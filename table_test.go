@@ -24,6 +24,7 @@ type Person struct {
 }
 
 var dummyPets = []Pet{
+	{"John Doe", 99, "", Person{"Unknown", 9999}},
 	{"Fluffy", 3, "Cat", Person{"Alice", 30}},
 	{"Buddy", 12, "Dog", Person{"Bob", 25}},
 	{"Goldie", 1, "Fish", Person{"Charlie", 20}},
