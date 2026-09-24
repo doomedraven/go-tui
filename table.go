@@ -295,7 +295,7 @@ func (t *table) extractFromNode(x parse.Node) ([]string, error) {
 	case *parse.TextNode:
 		return []string{}, nil
 	case *parse.IfNode:
-		return nil, errors.New("if is not supported")
+		return t.extractFromNode(n.Pipe)
 	case *parse.RangeNode:
 		return nil, errors.New("range is not supported")
 	case *parse.WithNode:
