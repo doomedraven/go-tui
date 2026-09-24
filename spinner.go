@@ -188,13 +188,13 @@ func (s *Spinners) start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			for _, spinner := range s.state {
+			for offset, spinner := range s.state {
 				if spinner == nil {
 					continue
 				}
 				slog.Debug("cancelling spinner")
 				spinner.cancel()
-				s.wg.Done()
+				s.markDone(offset)
 			}
 			s.stop()
 
@@ -209,7 +209,27 @@ func (s *Spinners) start(ctx context.Context) {
 		case offset := <-s.stops:
 			s.stopSpinner(offset)
 		case <-s.ticks:
+			s.drainQueues()
 			prevActive = s.redraw(prevActive)
+		}
+	}
+}
+
+// drainQueues ensures we apply pending spinner mutations before rendering a frame.
+// This helps tick events run after any concurrent updates/stops/creates that were
+// queued in the same moment, making tests deterministic.
+func (s *Spinners) drainQueues() {
+	for {
+		select {
+		case ns := <-s.creates:
+			s.newSpinner(ns)
+			s.wg.Add(1)
+		case update := <-s.updates:
+			s.updateSpinner(update)
+		case offset := <-s.stops:
+			s.stopSpinner(offset)
+		default:
+			return
 		}
 	}
 }
@@ -274,8 +294,7 @@ func (s *Spinners) stopSpinner(offset int) {
 		if s.state[offset] == nil {
 			return // very unlikely, but just in case
 		}
-		s.wg.Done()
-		s.state[offset].Done = true
+		s.markDone(offset)
 		if s.state[offset].Failed {
 			return // user needs to see the error message
 		}
@@ -286,6 +305,18 @@ func (s *Spinners) stopSpinner(offset int) {
 		s.state[offset] = nil
 		s.displayed--
 	}
+}
+
+func (s *Spinners) markDone(offset int) {
+	if offset < 0 || offset >= len(s.state) {
+		return
+	}
+	spinner := s.state[offset]
+	if spinner == nil || spinner.Done {
+		return
+	}
+	spinner.Done = true
+	s.wg.Done()
 }
 
 //nolint:errcheck // TODO: add error handling in Spinners state
