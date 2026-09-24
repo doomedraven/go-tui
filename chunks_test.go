@@ -29,9 +29,32 @@ func TestTruncateASCII(t *testing.T) {
 		{"abcd", "abcd"},
 		{"abcdef", "abc…"},
 		{"abcde", "abc…"},
+		{"åäöxy", "åäö…"},
+		{"\x1b[31måäöxy\x1b[0m", "\x1b[31måäö…\x1b[0m"},
 	} {
 		t.Run(fmt.Sprint(tt), func(t *testing.T) {
 			assert.Equal(t, tt.out, truncateAscii(tt.in, 4))
+		})
+	}
+}
+
+func TestWidthUnicode(t *testing.T) {
+	//nolint:gosmopolitan // intent is to verify width handling on specific scripts.
+	for _, tt := range []struct {
+		in   string
+		want int
+	}{
+		{"abc", 3},
+		{"åäö", 3},
+		{"a\u0308", 1},            // combining diaeresis
+		{"\x1b[31må\x1b[0m", 1},   // colored single rune
+		{"\x1b[31måäö\x1b[0m", 3}, // colored multi-byte runes
+		{"界面", 4},                 // wide runes
+		{"\x1b[32m界面\x1b[0m", 4},  // wide runes with color
+		{"界\u0308", 2},            // wide rune plus combining mark
+	} {
+		t.Run(tt.in, func(t *testing.T) {
+			assert.Equal(t, tt.want, width([]byte(tt.in)))
 		})
 	}
 }
