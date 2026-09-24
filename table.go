@@ -425,7 +425,8 @@ func reflectStructFields(rt reflect.Type) (structFields, error) {
 		if ft.Kind() == reflect.Pointer {
 			ft = f.Type.Elem()
 		}
-		if ft.Kind() == reflect.Struct {
+		_, isStringer := ft.MethodByName("String")
+		if ft.Kind() == reflect.Struct && !isStringer {
 			nested, err := reflectStructFields(ft)
 			if err != nil {
 				return nil, fmt.Errorf("nested %s: %w", f.Name, err)
