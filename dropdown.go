@@ -632,7 +632,7 @@ func (d *dropdown) loadItem(io *termIO, frame *bytes.Buffer, it itPair, more boo
 	// 	space += 2
 	// }
 	var errs []error
-	err = io.clear(io.Height, frame)
+	err = io.clear(space, frame)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("clear: %w", err))
 	}

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -274,4 +275,29 @@ func TestDropdownKVMultipleItems(t *testing.T) {
 	assert.Equal(t, "banana", result.key)
 	assert.Equal(t, 3, result.value)
 	assert.NoError(t, result.err)
+}
+
+func TestDropdownLazyClearsOnlyRenderedArea(t *testing.T) {
+	d := newDropdown()
+	assert.NoError(t, d.parseTemplates())
+	d.trie = newTrie()
+
+	var (
+		frame  bytes.Buffer
+		output bytes.Buffer
+	)
+	tio := &termIO{
+		in:      bytes.NewBuffer(nil),
+		out:     &output,
+		Width:   20,
+		Height:  5,
+		Restore: func() error { return nil },
+	}
+	space := 2
+	err := d.loadItem(tio, &frame, itPair{item: "one"}, true, space)
+	assert.NoError(t, err)
+
+	var expected bytes.Buffer
+	assert.NoError(t, tio.clear(space, &expected))
+	assert.Equal(t, expected.String(), output.String())
 }
