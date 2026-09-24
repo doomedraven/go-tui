@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"text/template"
 )
 
@@ -88,7 +89,21 @@ func ansciiFormatter(codes ...string) func(...any) string {
 			result += code
 		}
 		for _, t := range text {
-			result += fmt.Sprint(t)
+			switch x := t.(type) {
+			case *string:
+				if x != nil {
+					result += *x
+				}
+			case []string:
+				result += strings.Join(x, ", ")
+			case *int:
+				if x != nil {
+					//nolint:perfsprint // ignore
+					result += fmt.Sprint(*x)
+				}
+			default:
+				result += fmt.Sprint(t)
+			}
 		}
 		result += reset
 

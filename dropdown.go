@@ -245,6 +245,24 @@ func WithHide() opt {
 	})
 }
 
+func WithFieldTemplate(fieldName ...string) opt {
+	return opT(func(d *dropdown) error {
+		var single, answer []string
+		for _, f := range fieldName {
+			single = append(single, "."+f)
+			answer = append(answer, ".Answer."+f)
+		}
+		a := strings.Join(single, ` ", " `)
+		b := strings.Join(answer, ` ", " `)
+		// d.LabelTemplate = fmt.Sprintf(`{{ "?" | green }} {{ .%s | bold }}`, fieldName)
+		d.ActiveItemTemplate = fmt.Sprintf(`{{ cyan "→ " %s }}`, a)
+		d.InactiveItemTemplate = fmt.Sprintf(`{{ dim "→ " %s }}`, a)
+		d.AnswerTemplate = fmt.Sprintf(`{{ dim "✔ " .Label " …" }} {{ bold %s }}`, b)
+
+		return nil
+	})
+}
+
 func WithLabelTemplate(tmpl string) opt {
 	return opT(func(d *dropdown) error {
 		d.LabelTemplate = tmpl
