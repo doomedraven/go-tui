@@ -293,7 +293,8 @@ func (p *progressState) increment(now time.Time) {
 	since := now.Sub(p.redrawAt)
 	completionRate := float64(increment) / since.Seconds()
 	p.rollingRates = append(p.rollingRates, completionRate)
-	if len(p.rollingRates) > 5 {
+	keep := min(10, int(p.currentNum/10)) // keep last max 10% of rates
+	if len(p.rollingRates) > keep {
 		p.rollingRates = p.rollingRates[1:] // keep only the last 10 rates
 	}
 	p.redrawAt = now
