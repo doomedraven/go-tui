@@ -71,6 +71,17 @@ func Contains(t *testing.T, s, substr string) {
 	}
 }
 
+// NotContains asserts that the string does not contain the substring.
+func NotContains(t *testing.T, s, substr string) {
+	t.Helper()
+
+	if strings.Contains(s, substr) {
+		_, file, line, _ := runtime.Caller(1)
+
+		t.Fatalf("%s:%d: expected %s not to contain: %s", file, line, s, substr)
+	}
+}
+
 // Error asserts that the error is not nil.
 func Error(t *testing.T, err error) {
 	t.Helper()

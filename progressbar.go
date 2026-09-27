@@ -94,6 +94,7 @@ type Progressbar struct {
 	ticks      <-chan time.Time
 	now        func() time.Time
 	err        error
+	rendered   bool
 }
 
 // NewMaxProgressBar returns progress bar towards the max number.
@@ -175,14 +176,16 @@ func (p *Progressbar) start(ctx context.Context) {
 }
 
 func (p *Progressbar) tick(frame *bytes.Buffer, labelWidth int) bool {
-	err := p.io.clear(1, frame)
-	if err != nil {
-		p.err = fmt.Errorf("clear: %w", err)
+	if p.rendered {
+		err := p.io.clear(1, frame)
+		if err != nil {
+			p.err = fmt.Errorf("clear: %w", err)
+		}
 	}
 	frame.WriteByte('\r')
 	frame.WriteString(p.label)
 	frame.WriteString(" ")
-	err = p.render(frame, p.io.Width-labelWidth, p.now())
+	err := p.render(frame, p.io.Width-labelWidth, p.now())
 	if err != nil {
 		p.err = fmt.Errorf("redraw: %w", err)
 
@@ -196,17 +199,20 @@ func (p *Progressbar) tick(frame *bytes.Buffer, labelWidth int) bool {
 
 		return true
 	}
+	p.rendered = true
 
 	return p.isDone()
 }
 
 func (p *Progressbar) stop() error {
-	err := p.io.clear(1, p.io)
-	if err != nil {
-		return fmt.Errorf("clear: %w", err)
+	if p.rendered {
+		err := p.io.clear(1, p.io)
+		if err != nil {
+			return fmt.Errorf("clear: %w", err)
+		}
 	}
 	p.ticker.Stop()
-	err = p.io.Restore()
+	err := p.io.Restore()
 	if err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}

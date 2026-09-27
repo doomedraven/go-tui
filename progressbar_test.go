@@ -69,8 +69,27 @@ func TestProgressbarTickRenders(t *testing.T) {
 		t.Fatalf("no progress output")
 	}
 
-	assert.Contains(t, output, "\x1b[1A\r\x1b[K\r")
+	assert.NotContains(t, output, "\x1b[1A\r\x1b[K\r")
 	assert.Contains(t, output, "download 50% [>] (10.00/s, 1s remaining)")
+
+	p.Add(5)
+	now = start.Add(2 * time.Second)
+
+	select {
+	case ticks <- now:
+	case <-time.After(time.Second):
+		t.Fatalf("tick not delivered")
+	}
+
+	var second string
+	select {
+	case second = <-cio.Out:
+	case <-time.After(time.Second):
+		t.Fatalf("no second progress output")
+	}
+
+	assert.Contains(t, second, "\x1b[1A\r\x1b[K\r")
+	assert.Contains(t, second, "download 75%")
 }
 
 func TestNewMaxProgressBar(t *testing.T) {
