@@ -66,7 +66,9 @@ func newStartedProgressBar(label string, size int64, opts ...opt) (*Progressbar,
 	p.showEstimate = true
 	p.maxNum = size
 	p.io, err = p.makeTermIO(p.in, p.out)
-	if err != nil {
+	if errors.Is(err, ErrNoTTY) {
+		return p, nil // continue like nothing happens
+	} else if err != nil {
 		return nil, fmt.Errorf("make io: %w", err)
 	}
 	err = p.io.Restore()
@@ -105,15 +107,6 @@ func NewSliceProgressBar[T any](label string, slice []T, opts ...opt) iter.Seq2[
 		var zero T
 		p, err := newStartedProgressBar(label, int64(len(slice)), opts...)
 		if err != nil {
-			if errors.Is(err, ErrNoTTY) {
-				for _, v := range slice {
-					if !yield(v, nil) {
-						return
-					}
-				}
-
-				return
-			}
 			yield(zero, err)
 
 			return
@@ -137,6 +130,9 @@ func NewSliceProgressBar[T any](label string, slice []T, opts ...opt) iter.Seq2[
 }
 
 func (p *Progressbar) Add(num int64) {
+	if p.io == nil {
+		return // most likely no TTY
+	}
 	select {
 	case <-p.ctx.Done():
 		return
@@ -145,6 +141,9 @@ func (p *Progressbar) Add(num int64) {
 }
 
 func (p *Progressbar) Close() error {
+	if p.io == nil {
+		return nil // most likely no TTY
+	}
 	p.cancel()
 
 	return p.err
