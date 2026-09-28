@@ -118,7 +118,6 @@ func TestPrettyJSON_EscapedCharacters(t *testing.T) {
 }
 
 func TestPrettyJSON_ColorCodes(t *testing.T) {
-	var buf bytes.Buffer
 	input := map[string]any{
 		"level1": map[string]any{
 			"level2": map[string]string{
@@ -126,14 +125,24 @@ func TestPrettyJSON_ColorCodes(t *testing.T) {
 			},
 		},
 	}
-	err := PrettyJSON(&buf, input)
-	assert.NoError(t, err)
+	output := recolorJSON(t, input)
 
-	output := buf.String()
 	// Check for ANSI color codes
 	assert.Contains(t, output, "\x1b[")
 	// Check for bold formatting
 	assert.True(t, strings.Contains(output, bold) || strings.Contains(output, "\x1b[1m"))
 	// Check for reset codes
 	assert.True(t, strings.Contains(output, reset) || strings.Contains(output, "\x1b[0m"))
+}
+
+func recolorJSON(t *testing.T, src any) string {
+	t.Helper()
+
+	identBuf, err := jsonIndent(src)
+	assert.NoError(t, err)
+
+	var out bytes.Buffer
+	prettyJsonRecolor(identBuf, &out)
+
+	return out.String()
 }

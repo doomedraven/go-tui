@@ -41,9 +41,26 @@ var valDepthShades = []string{ // shades of green
 
 // PrettyJSON pretty-prints JSON data with depth-aware coloring.
 func PrettyJSON(w io.Writer, src any) error {
-	identBuf, outBuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
-	var err error
+	identBuf, err := jsonIndent(src)
+	if err != nil {
+		return err
+	}
+	if !isTerminal() {
+		_, err = identBuf.WriteTo(w)
+
+		return err
+	}
+	outBuf := bytes.NewBuffer(nil)
+	prettyJsonRecolor(identBuf, outBuf)
+	_, err = outBuf.WriteTo(w)
+
+	return err
+}
+
+func jsonIndent(src any) (*bytes.Buffer, error) {
+	identBuf := bytes.NewBuffer(nil)
 	var toIndent []byte
+	var err error
 	switch src := src.(type) {
 	case string:
 		toIndent = []byte(src)
@@ -52,18 +69,16 @@ func PrettyJSON(w io.Writer, src any) error {
 	default:
 		toIndent, err = json.Marshal(src)
 		if err != nil {
-			return fmt.Errorf("marshal: %w", err)
+			return nil, fmt.Errorf("marshal: %w", err)
 		}
 	}
 	// standard library already indents JSON data, so we're only coloring things here.
 	err = json.Indent(identBuf, toIndent, "", "  ")
 	if err != nil {
-		return fmt.Errorf("indent: %w", err)
+		return nil, fmt.Errorf("indent: %w", err)
 	}
-	prettyJsonRecolor(identBuf, outBuf)
-	_, err = outBuf.WriteTo(w)
 
-	return err
+	return identBuf, nil
 }
 
 func prettyJsonRecolor(identBuf, w *bytes.Buffer) {
