@@ -83,6 +83,11 @@ var colorFns = template.FuncMap{
 	"ago":          ago,
 }
 
+func WithFn(name string, fn any) {
+	// TODO: add validation for fn signature via reflect
+	colorFns[name] = fn
+}
+
 func ansciiFormatter(codes ...string) func(...any) string {
 	return func(text ...any) string {
 		var result string

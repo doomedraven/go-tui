@@ -276,6 +276,16 @@ func WithFieldTemplate(fieldName ...string) opt {
 	})
 }
 
+func WithSimpleTemplate(main string, auxTmpl string) opt {
+	return opT(func(d *dropdown) error {
+		d.ActiveItemTemplate = fmt.Sprintf(`{{ cyan "→ " .%s }} {{ dim "(" %s ")" }}`, main, auxTmpl)
+		d.InactiveItemTemplate = fmt.Sprintf(`{{ dim "→ " .%s }}`, main)
+		d.AnswerTemplate = fmt.Sprintf(`{{ dim "✔ " .Label " …" }} {{ bold .Answer.%s }}`, main)
+
+		return nil
+	})
+}
+
 func WithLabelTemplate(tmpl string) opt {
 	return opT(func(d *dropdown) error {
 		d.LabelTemplate = tmpl
