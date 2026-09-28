@@ -11,6 +11,7 @@ import (
 	"io"
 	"iter"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"text/template"
@@ -238,10 +239,11 @@ func (d *dropdown) dropdownIndex(o ...opt) (int, error) {
 }
 
 var DefaultLabelTemplate = `{{ "?" | green }} {{ . | bold }}`
-var DefaultDropdownActiveItemTemplate = `{{ cyan "→ " . }}`
-var DefaultDropdownInactiveItemTemplate = `{{ dim "→ " . }}`
+var DefaultDropdownActiveItemTemplate = `{{ cyan "→ " (label .) }}`
+var DefaultDropdownInactiveItemTemplate = `{{ dim "→ " (label .) }}`
 var DefaultMoreItemsTemplate = ` {{ dim "↓ " .More " more … (" .Total " total)" | italic }}`
 var DefaultAnswerTemplate = `{{ dim "✔ " .Label " …" }} {{ .Answer | bold }}`
+var DefaultDropdownAnswerTemplate = `{{ dim "✔ " .Label " …" }} {{ bold (label .Answer) }}`
 
 type dropdownAnswer struct {
 	Label  string
@@ -353,14 +355,194 @@ func newDropdown() *dropdown {
 		ActiveItemTemplate:   DefaultDropdownActiveItemTemplate,
 		InactiveItemTemplate: DefaultDropdownInactiveItemTemplate,
 		MoreItemsTemplate:    DefaultMoreItemsTemplate,
-		AnswerTemplate:       DefaultAnswerTemplate,
+		AnswerTemplate:       DefaultDropdownAnswerTemplate,
 		IterBatchSize:        10,
 		trie:                 newTrie(),
 	}
 }
 
+// templateFuncs clones shared template funcs and injects dropdown-specific funcs.
+func (d *dropdown) templateFuncs() template.FuncMap {
+	funcs := make(template.FuncMap, len(colorFns)+1)
+	for name, fn := range colorFns {
+		funcs[name] = fn
+	}
+	funcs["label"] = d.itemLabel
+
+	return funcs
+}
+
+// itemLabel renders a stable human label for dropdown items.
+func (d *dropdown) itemLabel(item any) string {
+	label, ok := d.structLabel(item)
+	if ok {
+		return label
+	}
+	label, ok = d.stringerLabel(item)
+	if ok {
+		return label
+	}
+
+	return fmt.Sprint(item)
+}
+
+// structLabel extracts a label from struct items using tags and common field names.
+func (d *dropdown) structLabel(item any) (string, bool) {
+	value, ok := d.indirectValue(reflect.ValueOf(item))
+	if !ok || value.Kind() != reflect.Struct {
+		return "", false
+	}
+	label, ok := d.annotatedStructLabel(value)
+	if ok {
+		return label, true
+	}
+
+	return d.heuristicStructLabel(value)
+}
+
+// stringerLabel returns String() output, including pointer-receiver methods on struct values.
+func (d *dropdown) stringerLabel(item any) (string, bool) {
+	x, ok := item.(fmt.Stringer)
+	if ok {
+		return x.String(), true
+	}
+	value, ok := d.indirectValue(reflect.ValueOf(item))
+	if !ok || value.Kind() != reflect.Struct {
+		return "", false
+	}
+	ptr := reflect.New(value.Type())
+	ptr.Elem().Set(value)
+	x, ok = ptr.Interface().(fmt.Stringer)
+	if !ok {
+		return "", false
+	}
+
+	return x.String(), true
+}
+
+// annotatedStructLabel resolves fields explicitly marked as label.
+func (d *dropdown) annotatedStructLabel(value reflect.Value) (string, bool) {
+	rt := value.Type()
+	for i := range rt.NumField() {
+		field := rt.Field(i)
+		if !field.IsExported() || !d.isLabelTag(field.Tag) {
+			continue
+		}
+		label, ok := d.valueLabel(value.Field(i))
+		if ok {
+			return label, true
+		}
+	}
+
+	return "", false
+}
+
+// heuristicStructLabel resolves labels from common field names.
+func (d *dropdown) heuristicStructLabel(value reflect.Value) (string, bool) {
+	rt := value.Type()
+	for _, want := range []string{
+		"label",
+		"name",
+		"title",
+		"description",
+		"displayname",
+		"fullname",
+		"summary",
+		"text",
+		"subject",
+	} {
+		for i := range rt.NumField() {
+			field := rt.Field(i)
+			if !field.IsExported() || !strings.EqualFold(field.Name, want) {
+				continue
+			}
+			label, ok := d.valueLabel(value.Field(i))
+			if ok {
+				return label, true
+			}
+		}
+	}
+
+	return "", false
+}
+
+// valueLabel stringifies an annotated or heuristic field and skips empty values.
+func (d *dropdown) valueLabel(value reflect.Value) (string, bool) {
+	value, ok := d.indirectValue(value)
+	if !ok {
+		return "", false
+	}
+	if value.Kind() == reflect.String {
+		out := strings.TrimSpace(value.String())
+		if out != "" {
+			return out, true
+		}
+
+		return "", false
+	}
+	if value.CanInterface() {
+		x, ok := value.Interface().(fmt.Stringer)
+		if ok {
+			out := strings.TrimSpace(x.String())
+			if out != "" {
+				return out, true
+			}
+
+			return "", false
+		}
+	}
+	if value.Kind() == reflect.Struct {
+		ptr := reflect.New(value.Type())
+		ptr.Elem().Set(value)
+		x, ok := ptr.Interface().(fmt.Stringer)
+		if ok {
+			out := strings.TrimSpace(x.String())
+			if out != "" {
+				return out, true
+			}
+
+			return "", false
+		}
+	}
+
+	return "", false
+}
+
+// isLabelTag recognizes supported struct-tag annotations for dropdown labels.
+func (d *dropdown) isLabelTag(tag reflect.StructTag) bool {
+	return strings.EqualFold(strings.TrimSpace(tag.Get("header")), "label") ||
+		d.hasLabelOption(tag.Get("tui")) ||
+		strings.EqualFold(strings.TrimSpace(tag.Get("label")), "true")
+}
+
+// hasLabelOption checks whether a comma-separated tag contains "label".
+func (d *dropdown) hasLabelOption(tag string) bool {
+	for _, option := range strings.Split(tag, ",") {
+		if strings.EqualFold(strings.TrimSpace(option), "label") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// indirectValue dereferences interface/pointer wrappers and rejects nil values.
+func (d *dropdown) indirectValue(value reflect.Value) (reflect.Value, bool) {
+	if !value.IsValid() {
+		return reflect.Value{}, false
+	}
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return reflect.Value{}, false
+		}
+		value = value.Elem()
+	}
+
+	return value, true
+}
+
 func (d *dropdown) parseTemplates() error {
-	tmpl := template.New("dropdown").Funcs(colorFns)
+	tmpl := template.New("dropdown").Funcs(d.templateFuncs())
 	labelTemplate, err := tmpl.New("label").Parse(mustEndWith(d.LabelTemplate, ' '))
 	if err != nil {
 		return fmt.Errorf("label: %w", err)

@@ -6,6 +6,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"iter"
 	"strings"
@@ -15,6 +16,52 @@ import (
 
 	"github.com/nfx/go-tui/internal/assert"
 )
+
+type dropdownHeuristicLabelItem struct {
+	ID   int
+	Name string
+}
+
+type dropdownAnnotatedLabelItem struct {
+	Name        string
+	Description string `header:"label"`
+}
+
+type dropdownStringerLabelItem struct {
+	ID int
+}
+
+func (d dropdownStringerLabelItem) String() string {
+	return fmt.Sprintf("stringer-%d", d.ID)
+}
+
+type dropdownPointerStringerLabelItem struct {
+	ID int
+}
+
+func (d *dropdownPointerStringerLabelItem) String() string {
+	return fmt.Sprintf("ptr-stringer-%d", d.ID)
+}
+
+type dropdownDisplayNameLabelItem struct {
+	DisplayName string
+}
+
+type dropdownFullNameLabelItem struct {
+	FullName string
+}
+
+type dropdownSummaryLabelItem struct {
+	Summary string
+}
+
+type dropdownTextLabelItem struct {
+	Text string
+}
+
+type dropdownSubjectLabelItem struct {
+	Subject string
+}
 
 func testIOforDropdown(t *testing.T, width, height int, o ...opt) (*chanIO, opt) { //nolint:unparam // ...
 	t.Helper()
@@ -553,6 +600,86 @@ func TestWithTemplateAddsActiveDetails(t *testing.T) {
 	assert.NoError(t, WithTemplate(".Name", ".Type", ".Owner")(d))
 	expected := `{{ cyan "→ " .Name }} {{ dim "(" (.Type) ", " (.Owner) ")" }}`
 	assert.Equal(t, expected, d.ActiveItemTemplate)
+}
+
+func TestDropdownItemLabelUsesHeuristicField(t *testing.T) {
+	d := newDropdown()
+	item := dropdownHeuristicLabelItem{ID: 42, Name: "alpha"}
+	assert.Equal(t, "alpha", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesDisplayNameHeuristic(t *testing.T) {
+	d := newDropdown()
+	item := dropdownDisplayNameLabelItem{DisplayName: "service-a"}
+	assert.Equal(t, "service-a", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesFullNameHeuristic(t *testing.T) {
+	d := newDropdown()
+	item := dropdownFullNameLabelItem{FullName: "Example Service"}
+	assert.Equal(t, "Example Service", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesSummaryHeuristic(t *testing.T) {
+	d := newDropdown()
+	item := dropdownSummaryLabelItem{Summary: "concise summary"}
+	assert.Equal(t, "concise summary", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesTextHeuristic(t *testing.T) {
+	d := newDropdown()
+	item := dropdownTextLabelItem{Text: "plaintext value"}
+	assert.Equal(t, "plaintext value", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesSubjectHeuristic(t *testing.T) {
+	d := newDropdown()
+	item := dropdownSubjectLabelItem{Subject: "subject line"}
+	assert.Equal(t, "subject line", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelUsesAnnotation(t *testing.T) {
+	d := newDropdown()
+	item := dropdownAnnotatedLabelItem{
+		Name:        "fallback",
+		Description: "annotated",
+	}
+	assert.Equal(t, "annotated", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelFallsBackToStringer(t *testing.T) {
+	d := newDropdown()
+	item := dropdownStringerLabelItem{ID: 7}
+	assert.Equal(t, "stringer-7", d.itemLabel(item))
+}
+
+func TestDropdownItemLabelFallsBackToPointerStringer(t *testing.T) {
+	d := newDropdown()
+	item := dropdownPointerStringerLabelItem{ID: 11}
+	assert.Equal(t, "ptr-stringer-11", d.itemLabel(item))
+}
+
+func TestDropdownSetItemUsesResolvedLabelForTrie(t *testing.T) {
+	d := newDropdown()
+	item := dropdownHeuristicLabelItem{ID: 3, Name: "omega"}
+	d.inactive = make([]bbuf, 1)
+	d.widths = make([]int, 1)
+	d.relevant = make([]int, 1)
+	d.trie = newTrie()
+	assert.NoError(t, d.parseTemplates())
+	assert.NoError(t, d.setItem(0, item))
+	assert.Equal(t, []int{0}, d.trie.Prefix("ome"))
+	assert.NotContains(t, d.inactive[0].String(), "{")
+}
+
+func TestDropdownShowAnswerUsesResolvedLabel(t *testing.T) {
+	d := newDropdown()
+	out := &bytes.Buffer{}
+	d.out = out
+	assert.NoError(t, d.parseTemplates())
+	assert.NoError(t, d.showAnswer("Pick", dropdownHeuristicLabelItem{ID: 9, Name: "delta"}))
+	assert.Contains(t, out.String(), "delta")
+	assert.NotContains(t, out.String(), "{")
 }
 
 func TestDropdownContextAndIOSetters(t *testing.T) {
