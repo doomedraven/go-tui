@@ -1,0 +1,7 @@
+DirectoryPath: public/
+DirectoryIndex: index.html
+CheckExternal: false
+IgnoreInternalEmptyHash: true
+OutputDir: public/tmp/
+IgnoreURLs:
+- "github.com"

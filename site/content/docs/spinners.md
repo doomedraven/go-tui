@@ -1,0 +1,127 @@
+---
+title: "Spinners"
+weight: 60
+---
+
+APIs:
+
+- `NewSpinners(opts...)`
+- `(*Spinners).Add(ctx, opts...)`
+- `(*Spinners).MustAddBackground(opts...)`
+- `(*Spinners).Close()`
+- `(*Spinner).Update(msg)`
+- `(*Spinner).Updatef(format, args...)`
+- `(*Spinner).Fail(err)`
+- `(*Spinner).Close()`
+
+## Basic example
+
+```go
+group, err := tui.NewSpinners()
+if err != nil {
+	return err
+}
+defer group.Close()
+
+sp, err := group.Add(context.Background())
+if err != nil {
+	return err
+}
+sp.Update("fetching")
+sp.Update("processing")
+sp.Close()
+```
+
+## WithPrefixf
+
+Sets spinner prefix label (applies to `Add` and `MustAddBackground`).
+
+```go
+sp, err := group.Add(context.Background(),
+	tui.WithPrefixf("worker-%d", 3),
+)
+```
+
+## WithKeep
+
+Keeps spinner row visible after close.
+
+```go
+sp, err := group.Add(context.Background(),
+	tui.WithKeep(),
+)
+```
+
+## WithFrames
+
+Overrides spinner animation frames for a spinner instance.
+
+```go
+sp, err := group.Add(context.Background(),
+	tui.WithFrames([]string{"-", "\\", "|", "/"}),
+)
+```
+
+Detailed behavior:
+
+- Frames are cycled in order on each spinner tick.
+- Ticks are driven by the spinner group ticker (100ms interval).
+- After the last frame, animation loops back to the first frame.
+- Default frame set for new spinners is `SpinnerStyleDocs`.
+- You can switch to `DefaultSpinnerStyle` or any custom frame slice.
+- Frame slices must be non-empty. There is no runtime guard for empty slices.
+- Keep frame width visually consistent to avoid jitter in terminal output.
+
+## WithContext
+
+Sets group context (applies to `NewSpinners`).
+
+```go
+group, err := tui.NewSpinners(tui.WithContext(ctx))
+```
+
+## WithTimeout
+
+Wraps group context with timeout.
+
+```go
+group, err := tui.NewSpinners(tui.WithTimeout(45*time.Second))
+```
+
+## WithInput
+
+Overrides group input source.
+
+```go
+group, err := tui.NewSpinners(tui.WithInput(in))
+```
+
+## WithOutput
+
+Overrides spinner output writer.
+
+```go
+group, err := tui.NewSpinners(tui.WithOutput(out))
+```
+
+## WithOptions
+
+Composes group options for reuse.
+
+```go
+common := tui.WithOptions(
+	tui.WithContext(ctx),
+	tui.WithOutput(out),
+)
+
+group, err := tui.NewSpinners(common)
+```
+
+## Styles
+
+- `SpinnerStyleDocs` is the default frame set for new spinners.
+- `DefaultSpinnerStyle` is a denser unicode animation set.
+
+## Failure handling
+
+`Fail(err)` marks spinner as failed and keeps visible error message.
