@@ -1,6 +1,4 @@
 baseURL: /
-relativeURLs: true
-uglyURLs: true
 languageCode: 'en-us'
 title: 'go-tui'
 copyright: "© 2026 nfx"
