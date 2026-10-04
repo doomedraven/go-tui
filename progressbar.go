@@ -398,7 +398,9 @@ func (p *Progressbar) start(ctx context.Context) {
 				return
 			}
 		case <-p.io.onResize:
-			p.tick(frame)
+			if p.tick(frame) {
+				return
+			}
 		}
 	}
 }
