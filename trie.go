@@ -6,6 +6,7 @@ package tui
 import (
 	"slices"
 	"sort"
+	"strings"
 	"unicode"
 )
 
@@ -58,22 +59,50 @@ func (t *trie) Add(word string, i int) {
 	r.idx = append(r.idx, i)
 }
 
+// Prefix returns sorted indexes of items where every word of the prefix
+// is a prefix of some word of the item.
 func (t *trie) Prefix(prefix string) []int {
-	r := t
-	var isLetter bool
-	for _, b := range prefix {
-		isLetter = unicode.IsLetter(b)
-		if !isLetter && !unicode.IsDigit(b) {
-			if len(r.m) == 0 && len(r.Indexes()) > 0 {
-				// if one full word matched, we're good
-				break
+	var out []int
+	for i, word := range t.queryWords(prefix) {
+		found := t.wordPrefix(word)
+		if i == 0 {
+			out = found
+		} else {
+			out = t.intersect(out, found)
+		}
+		if len(out) == 0 {
+			return nil
+		}
+	}
+	if out == nil {
+		// prefix without letters or digits matches everything
+		out = t.Indexes()
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// queryWords tokenizes the query the same way Add does: words are separated
+// by spaces, and other non-alphanumeric runes are dropped within a word.
+func (t *trie) queryWords(query string) (words []string) {
+	for field := range strings.SplitSeq(query, " ") {
+		word := strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return r
 			}
-			continue
+			return -1
+		}, field)
+		if word != "" {
+			words = append(words, word)
 		}
-		if isLetter {
-			b = unicode.ToLower(b)
-		}
-		s, ok := r.m[b]
+	}
+	return words
+}
+
+func (t *trie) wordPrefix(word string) []int {
+	r := t
+	for _, b := range word {
+		s, ok := r.m[unicode.ToLower(b)]
 		if !ok {
 			return nil
 		}
@@ -82,6 +111,24 @@ func (t *trie) Prefix(prefix string) []int {
 	out := r.Indexes()
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// intersect returns common elements of two sorted slices in linear time.
+func (t *trie) intersect(a, b []int) (out []int) {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		switch {
+		case a[i] < b[j]:
+			i++
+		case a[i] > b[j]:
+			j++
+		default:
+			out = append(out, a[i])
+			i++
+			j++
+		}
+	}
+	return out
 }
 
 func (t *trie) Words() (out []string) {
