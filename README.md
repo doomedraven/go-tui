@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/nfx/go-tui/graph/badge.svg?token=70C94VY35K)](https://codecov.io/gh/nfx/go-tui)
+
 Alternatives:
 - https://github.com/chzyer/readline - requires non-standard logging frameworks
 - https://github.com/manifoldco/promptui - effectively abandoned and has bell sounds
