@@ -9,7 +9,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/nfx/go-tui/internal/assert"
 )
@@ -543,4 +545,113 @@ func TestInputRunContextDone(t *testing.T) {
 	assert.NoError(t, i.parseTemplates())
 	_, err := i.run()
 	assert.Error(t, err)
+}
+
+// TestInputRunCancelledReadKeepsNextKey verifies cancellation preserves file input.
+func TestInputRunCancelledReadKeepsNextKey(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	assert.NoError(t, err)
+	defer pr.Close()
+	defer pw.Close()
+	mk := func(in io.Reader, out io.Writer) (*termIO, error) {
+		return &termIO{in: in, out: out, Width: 20, Height: 2, Restore: func() error { return nil }}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	i := newInput("first")
+	i.ctx, i.in, i.out, i.makeTermIO = ctx, pr, &bytes.Buffer{}, mk
+	assert.NoError(t, i.parseTemplates())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+		_, _ = pw.Write([]byte{'x'})
+		_, _ = pw.Write([]byte{keyEnter})
+	}()
+	_, err = i.run()
+	assert.Error(t, err)
+
+	j := newInput("second")
+	j.in, j.out, j.makeTermIO = pr, &bytes.Buffer{}, mk
+	assert.NoError(t, j.parseTemplates())
+	got, err := j.run()
+	assert.NoError(t, err)
+	assert.Equal(t, "x", got)
+}
+
+// notifyingReader exposes a descriptor while reporting when a blocking read starts.
+type notifyingReader struct {
+	*os.File
+	started chan struct{}
+	once    sync.Once
+}
+
+// Read signals entry before reading one byte, like a wrapper that limits chunks.
+func (r *notifyingReader) Read(p []byte) (int, error) {
+	r.once.Do(func() { close(r.started) })
+	return r.File.Read(p[:1])
+}
+
+// TestInputRunCancelledWrappedReadKeepsNextKey verifies handoff of a blocked read.
+func TestInputRunCancelledWrappedReadKeepsNextKey(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	assert.NoError(t, err)
+	defer pr.Close()
+	defer pw.Close()
+	in := &notifyingReader{File: pr, started: make(chan struct{})}
+	mk := func(in io.Reader, out io.Writer) (*termIO, error) {
+		return &termIO{in: in, out: out, Width: 20, Height: 2, Restore: func() error { return nil }}, nil
+	}
+	first := newInput("first")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	first.ctx, first.in, first.out, first.makeTermIO = ctx, in, &bytes.Buffer{}, mk
+	assert.NoError(t, first.parseTemplates())
+	finished := make(chan error, 1)
+	go func() {
+		_, err := first.run()
+		finished <- err
+	}()
+	select {
+	case <-in.started:
+	case <-time.After(time.Second):
+		t.Fatal("first prompt did not start reading")
+	}
+	cancel()
+	select {
+	case err := <-finished:
+		assert.True(t, errors.Is(err, context.Canceled))
+	case <-time.After(time.Second):
+		t.Fatal("cancelled prompt did not return")
+	}
+	// Write before starting another prompt: the result must survive without a consumer.
+	_, err = pw.Write([]byte{'x', keyEnter})
+	assert.NoError(t, err)
+	second := newInput("second")
+	second.ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	second.in, second.out, second.makeTermIO = in, &bytes.Buffer{}, mk
+	assert.NoError(t, second.parseTemplates())
+	got, err := second.run()
+	assert.NoError(t, err)
+	assert.Equal(t, "x", got)
+}
+
+// TestInputRunBufferedWrappedReader ensures buffered input does not wait on its fd.
+func TestInputRunBufferedWrappedReader(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	assert.NoError(t, err)
+	defer pr.Close()
+	defer pw.Close()
+	in := &mockDescriptor{Reader: bytes.NewBufferString("x\r"), fd: pr.Fd()}
+	prompt := newInput("buffered")
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	prompt.ctx, prompt.in, prompt.out = ctx, in, &bytes.Buffer{}
+	prompt.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
+		return &termIO{in: in, out: out, Width: 20, Height: 2, Restore: func() error { return nil }}, nil
+	}
+	assert.NoError(t, prompt.parseTemplates())
+	got, err := prompt.run()
+	assert.NoError(t, err)
+	assert.Equal(t, "x", got)
 }
