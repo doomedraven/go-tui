@@ -250,7 +250,7 @@ func TestProgressbarEmitsStructuredEvents(t *testing.T) {
 	metrics, ok := mustReceiveProgressEvent(t, events).(progressUpdate)
 	assert.True(t, ok)
 	assert.Equal(t, int64(1), metrics.Remaining)
-	assert.Equal(t, int64(0), metrics.Elapsed)
+	assert.Equal(t, int64(1), metrics.Elapsed)
 
 	assert.NoError(t, p.Close())
 	closed, ok := mustReceiveProgressEvent(t, events).(progressClosed)
@@ -949,3 +949,18 @@ func TestMetricsSnapshotZeroMax(t *testing.T) {
 		}
 	}
 }
+
+func TestProgressStateIncrementCalculatesElapsedFromNow(t *testing.T) {
+	start := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	p := &progressState{
+		maxNum:     10,
+		currentNum: 5,
+		startedAt:  start,
+		redrawAt:   start.Add(time.Second),
+	}
+	now := start.Add(3 * time.Second)
+	p.increment(now)
+	assert.Equal(t, 3*time.Second, p.elapsed)
+	assert.Equal(t, int64(3), p.metricsSnapshot().Elapsed)
+}
+
