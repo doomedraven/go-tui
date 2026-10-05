@@ -124,6 +124,52 @@ func TestProgressbarTickShrinksBetweenTicks(t *testing.T) {
 	}
 }
 
+func TestProgressbarTickOnResizeExitsWhenDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	cio := &chanIO{
+		ctx: ctx,
+		In:  make(chan string),
+		Out: make(chan string, 4),
+	}
+	resizeCh := make(chan struct{})
+	p, err := newStartedProgressBar("downloading files", 10,
+		WithInput(cio),
+		WithOutput(cio),
+		progressbarOpt(func(pb *Progressbar) error {
+			pb.ticks = make(chan time.Time)
+			pb.ticker = time.NewTicker(time.Hour)
+			pb.makeTermIO = func(in io.Reader, out io.Writer) (*termIO, error) {
+				return &termIO{
+					in:       in,
+					out:      out,
+					Width:    80,
+					Height:   1,
+					Restore:  func() error { return nil },
+					onResize: resizeCh,
+				}, nil
+			}
+			return nil
+		}),
+	)
+	assert.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	p.Add(10)
+
+	select {
+	case resizeCh <- struct{}{}:
+	case <-time.After(time.Second):
+		t.Fatal("failed to send resize event")
+	}
+
+	select {
+	case <-p.stopped:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected progressbar to stop after onResize when done")
+	}
+}
+
 func TestChanIOClearsWrappedManagedRowsAfterWidthShrink(t *testing.T) {
 	cio, stdout := chainIOforTest(t, 40, 6)
 	vp, err := cio.pushViewport()

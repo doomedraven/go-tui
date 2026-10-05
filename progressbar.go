@@ -399,7 +399,9 @@ func (p *Progressbar) start(ctx context.Context) {
 				return
 			}
 		case <-p.io.onResize:
-			p.tick(frame)
+			if p.tick(frame) {
+				return
+			}
 		}
 	}
 }
@@ -586,12 +588,12 @@ func (p *progressState) renderRate(rollingRate float64) string {
 }
 
 func (p *progressState) increment(now time.Time) {
+	p.elapsed = now.Sub(p.startedAt)
 	increment := p.currentNum - p.sinceRedrawNum
 	if increment == 0 {
 		return
 	}
 	p.sinceRedrawNum = p.currentNum
-	p.elapsed = p.redrawAt.Sub(p.startedAt)
 	since := now.Sub(p.redrawAt)
 	completionRate := float64(increment) / since.Seconds()
 	p.rollingRates = append(p.rollingRates, completionRate)
